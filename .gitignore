@@ -8,3 +8,16 @@ templates/
 !README.md
 !.gitignore
 *.md
+*.docx
+*.xlsx
+*.pptx
+*.pdf
+*.zip
+*.tar.gz
+*.7z
+*.exe
+*.dll
+*.so
+*.bin
+*.iso
+*.img

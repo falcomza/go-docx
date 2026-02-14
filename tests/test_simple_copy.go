@@ -8,7 +8,7 @@ import (
 
 func main() {
 	// Use the existing 10-row output as a clean test base
-	u, err := updater.New("docx_output_10_rows.docx")
+	u, err := updater.New("templates/docx_output_10_rows.docx")
 	if err != nil {
 		log.Fatal(err)
 	}

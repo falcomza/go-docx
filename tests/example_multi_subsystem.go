@@ -9,7 +9,7 @@ import (
 
 func main() {
 	// Open template DOCX - should contain one example chart and marker text for each subsystem
-	u, err := updater.New("docx_template.docx")
+	u, err := updater.New("templates/docx_template.docx")
 	if err != nil {
 		log.Fatal(err)
 	}

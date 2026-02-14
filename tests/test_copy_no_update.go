@@ -7,7 +7,7 @@ import (
 )
 
 func main() {
-	u, err := updater.New("docx_output_10_rows.docx")
+	u, err := updater.New("templates/docx_output_10_rows.docx")
 	if err != nil {
 		log.Fatal(err)
 	}

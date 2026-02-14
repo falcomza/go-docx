@@ -10,7 +10,7 @@ import (
 func main() {
 	// Use template that already has 3 charts inserted
 	// (created by Insert → Chart three times in LibreOffice/Word)
-	u, err := updater.New("docx_output_10_rows.docx") // Has 1 chart
+	u, err := updater.New("templates/docx_output_10_rows.docx") // Has 1 chart
 	if err != nil {
 		log.Fatal(err)
 	}

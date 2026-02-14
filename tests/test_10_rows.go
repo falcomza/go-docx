@@ -16,8 +16,8 @@ func main() {
 		log.Fatalf("Failed to get working directory: %v", err)
 	}
 
-	inputPath := filepath.Join(wd, "docx_template.docx")
-	outputPath := filepath.Join(wd, "docx_output_10_rows.docx")
+	inputPath := filepath.Join(wd, "templates", "docx_template.docx")
+	outputPath := filepath.Join(wd, "templates", "docx_output_10_rows.docx")
 
 	fmt.Printf("Input file: %s\n", inputPath)
 	fmt.Printf("Output file: %s\n", outputPath)
