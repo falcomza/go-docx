@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	docxupdater "github.com/falcomza/docx-updater/src"
+	docxupdater "github.com/falcomza/docx-update/src"
 )
 
 func TestInsertBasicTable(t *testing.T) {

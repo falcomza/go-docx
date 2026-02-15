@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	docxupdater "github.com/falcomza/docx-updater/src"
+	docxupdater "github.com/falcomza/docx-update/src"
 )
 
 func main() {

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	docxupdater "github.com/falcomza/docx-updater/src"
+	docxupdater "github.com/falcomza/docx-update/src"
 )
 
 // Verifies that when updating a copied chart with fewer series than the template,

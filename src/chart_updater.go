@@ -24,7 +24,7 @@ func New(docxPath string) (*Updater, error) {
 		return nil, fmt.Errorf("stat docx: %w", err)
 	}
 
-	tempDir, err := os.MkdirTemp("", "docx-updater-*")
+	tempDir, err := os.MkdirTemp("", "docx-update-*")
 	if err != nil {
 		return nil, fmt.Errorf("create temp dir: %w", err)
 	}
