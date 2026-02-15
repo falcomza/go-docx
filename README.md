@@ -26,7 +26,7 @@ A powerful Go library for programmatically manipulating Microsoft Word (DOCX) do
 ## Installation
 
 ```bash
-go get github.com/falcomza/docx-updater
+go get github.com/falcomza/docx-update
 ```
 
 ## Quick Start
@@ -36,7 +36,7 @@ package main
 
 import (
     "log"
-    updater "github.com/falcomza/docx-updater/src"
+    updater "github.com/falcomza/docx-update/src"
 )
 
 func main() {
@@ -394,7 +394,7 @@ SOFTWARE.
 
 ## Support
 
-- 📫 Report issues on [GitHub Issues](https://github.com/falcomza/docx-updater/issues)
+- 📫 Report issues on [GitHub Issues](https://github.com/falcomza/docx-update/issues)
 - ⭐ Star this repo if you find it useful
 - 🔧 Contributions and feedback are always welcome
 
