@@ -14,6 +14,7 @@ A powerful Go library for programmatically manipulating Microsoft Word (DOCX) do
 - **Table Creation**: Insert formatted tables with custom styles, borders, and row heights
 - **Paragraph Insertion**: Add styled text with headings, bold, italic, and underline formatting
 - **Image Insertion**: Add images with automatic proportional sizing and flexible positioning
+- **Page & Section Breaks**: Control document flow with page and section breaks
 - **Auto-Captions**: Generate auto-numbered captions using Word's SEQ fields for tables and charts
 
 🛠️ **Advanced Features**
@@ -281,6 +282,64 @@ u.InsertImage(updater.ImageOptions{
 })
 ```
 
+### Page and Section Breaks
+
+Control document flow and layout with breaks:
+
+```go
+u, _ := updater.New("document.docx")
+defer u.Cleanup()
+
+// Insert a page break to start new content on next page
+u.InsertPageBreak(updater.BreakOptions{
+    Position: updater.PositionEnd,
+})
+
+// Insert page break after specific text
+u.InsertPageBreak(updater.BreakOptions{
+    Position: updater.PositionAfterText,
+    Anchor:   "End of Chapter 1",
+})
+
+// Insert section break (next page) - allows different page settings
+u.InsertSectionBreak(updater.BreakOptions{
+    Position:    updater.PositionEnd,
+    SectionType: updater.SectionBreakNextPage,
+})
+
+// Insert continuous section break (same page, different formatting)
+u.InsertSectionBreak(updater.BreakOptions{
+    Position:    updater.PositionEnd,
+    SectionType: updater.SectionBreakContinuous,
+})
+
+// Insert even/odd page section breaks (for double-sided printing)
+u.InsertSectionBreak(updater.BreakOptions{
+    Position:    updater.PositionEnd,
+    SectionType: updater.SectionBreakEvenPage,
+})
+
+u.InsertSectionBreak(updater.BreakOptions{
+    Position:    updater.PositionEnd,
+    SectionType: updater.SectionBreakOddPage,
+})
+
+u.Save("with_breaks.docx")
+```
+
+**Section Break Types:**
+
+- `SectionBreakNextPage` - Start new section on next page
+- `SectionBreakContinuous` - Start new section on same page
+- `SectionBreakEvenPage` - Start new section on next even page
+- `SectionBreakOddPage` - Start new section on next odd page
+
+**Use Cases:**
+
+- Page breaks: Separate chapters, start appendices on new pages
+- Section breaks: Different page orientations, margins, headers/footers per section
+- Even/Odd breaks: Professional double-sided printing layouts
+
 ### Auto-Numbering Captions
 
 Add captions with automatic sequential numbering:
@@ -359,6 +418,13 @@ u.Save("multi_chart_report.docx")
 - Flexible positioning: beginning, end, before/after text
 - Auto-numbered captions with SEQ fields
 
+### Break Operations
+
+- `InsertPageBreak(options BreakOptions)` - Insert page break
+- `InsertSectionBreak(options BreakOptions)` - Insert section break
+- Section types: NextPage, Continuous, EvenPage, OddPage
+- Flexible positioning: beginning, end, before/after text
+
 ### Caption Operations
 
 - Integrated into `InsertChart`, `InsertTable`, and `InsertImage` via `Caption` field
@@ -383,6 +449,8 @@ u.Save("multi_chart_report.docx")
 │   ├── excel_handler.go   # Workbook updates
 │   ├── table.go           # Table insertion
 │   ├── paragraph.go       # Text insertion
+│   ├── image.go           # Image insertion
+│   ├── breaks.go          # Page and section breaks
 │   ├── caption.go         # Caption generation
 │   └── ...
 ├── tests/                 # Unit tests
@@ -398,6 +466,7 @@ Check the `/examples` directory for complete working examples:
 - `example_table.go` - Table creation with styling
 - `example_paragraph.go` - Text and heading insertion
 - `example_image.go` - Image insertion with proportional sizing
+- `example_breaks.go` - Page and section breaks
 - `example_captions.go` - Auto-numbered captions
 - `example_multi_subsystem.go` - Combined operations
 - `example_with_template.go` - Template-based generation

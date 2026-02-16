@@ -603,3 +603,95 @@ func TestInsertImageWithManualCaption(t *testing.T) {
 
 	t.Logf("Successfully created document with manual caption at: %s", outputPath)
 }
+
+// TestInsertBreaksWithRealTemplate tests page and section breaks with the real template
+func TestInsertBreaksWithRealTemplate(t *testing.T) {
+	templatePath := "../templates/docx_template.docx"
+	outputDir := "../outputs"
+	outputPath := filepath.Join(outputDir, "template_with_breaks_test.docx")
+
+	// Verify template exists
+	if _, err := os.Stat(templatePath); os.IsNotExist(err) {
+		t.Skipf("Template file not found: %s", templatePath)
+	}
+
+	// Ensure output directory exists
+	if err := os.MkdirAll(outputDir, 0o755); err != nil {
+		t.Fatalf("Failed to create output directory: %v", err)
+	}
+
+	u, err := docxupdater.New(templatePath)
+	if err != nil {
+		t.Fatalf("Failed to open template: %v", err)
+	}
+	defer u.Cleanup()
+
+	// Add Chapter 1
+	u.InsertParagraph(docxupdater.ParagraphOptions{
+		Text:     "Chapter 1: Introduction",
+		Style:    docxupdater.StyleHeading1,
+		Position: docxupdater.PositionEnd,
+	})
+
+	u.InsertParagraph(docxupdater.ParagraphOptions{
+		Text:     "This is the first chapter with introductory content.",
+		Position: docxupdater.PositionEnd,
+	})
+
+	// Page break after Chapter 1
+	err = u.InsertPageBreak(docxupdater.BreakOptions{
+		Position: docxupdater.PositionEnd,
+	})
+	if err != nil {
+		t.Fatalf("Failed to insert page break: %v", err)
+	}
+
+	// Add Chapter 2
+	u.InsertParagraph(docxupdater.ParagraphOptions{
+		Text:     "Chapter 2: Methods",
+		Style:    docxupdater.StyleHeading1,
+		Position: docxupdater.PositionEnd,
+	})
+
+	u.InsertParagraph(docxupdater.ParagraphOptions{
+		Text:     "This chapter describes the methodology.",
+		Position: docxupdater.PositionEnd,
+	})
+
+	// Section break (next page) before Chapter 3
+	err = u.InsertSectionBreak(docxupdater.BreakOptions{
+		Position:    docxupdater.PositionEnd,
+		SectionType: docxupdater.SectionBreakNextPage,
+	})
+	if err != nil {
+		t.Fatalf("Failed to insert section break: %v", err)
+	}
+
+	// Add Chapter 3
+	u.InsertParagraph(docxupdater.ParagraphOptions{
+		Text:     "Chapter 3: Results",
+		Style:    docxupdater.StyleHeading1,
+		Position: docxupdater.PositionEnd,
+	})
+
+	// Save the document
+	if err := u.Save(outputPath); err != nil {
+		t.Fatalf("Failed to save document: %v", err)
+	}
+
+	// Verify the output file was created
+	if _, err := os.Stat(outputPath); os.IsNotExist(err) {
+		t.Fatalf("Output file was not created: %s", outputPath)
+	}
+
+	// Verify document contains breaks
+	docXML := readZipEntry(t, outputPath, "word/document.xml")
+	if !strings.Contains(docXML, `<w:br w:type="page"/>`) {
+		t.Error("Page break not found")
+	}
+	if !strings.Contains(docXML, "<w:sectPr>") {
+		t.Error("Section break not found")
+	}
+
+	t.Logf("Successfully created document with breaks at: %s", outputPath)
+}

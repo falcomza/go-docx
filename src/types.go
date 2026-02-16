@@ -45,3 +45,29 @@ type ImageDimensions struct {
 	Width  int
 	Height int
 }
+
+// SectionBreakType defines the type of section break
+type SectionBreakType string
+
+const (
+	// SectionBreakNextPage starts the new section on the next page
+	SectionBreakNextPage SectionBreakType = "nextPage"
+	// SectionBreakContinuous starts the new section on the same page
+	SectionBreakContinuous SectionBreakType = "continuous"
+	// SectionBreakEvenPage starts the new section on the next even page
+	SectionBreakEvenPage SectionBreakType = "evenPage"
+	// SectionBreakOddPage starts the new section on the next odd page
+	SectionBreakOddPage SectionBreakType = "oddPage"
+)
+
+// BreakOptions defines options for inserting breaks
+type BreakOptions struct {
+	// Position where to insert the break
+	Position InsertPosition
+
+	// Anchor text for position-based insertion (for PositionAfterText/PositionBeforeText)
+	Anchor string
+
+	// Type of section break (only used for section breaks)
+	SectionType SectionBreakType
+}
