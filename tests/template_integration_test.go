@@ -215,7 +215,7 @@ func TestTemplateFindAll(t *testing.T) {
 			break
 		}
 		context := match.Before + match.Text + match.After
-		t.Logf("Match %d: '%s' at paragraph %d (context: ...%s...)", 
+		t.Logf("Match %d: '%s' at paragraph %d (context: ...%s...)",
 			i+1, match.Text, match.Paragraph, context)
 	}
 }
