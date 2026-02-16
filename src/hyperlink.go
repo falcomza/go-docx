@@ -145,7 +145,7 @@ func (u *Updater) InsertInternalLink(text, bookmarkName string, opts HyperlinkOp
 // addHyperlinkRelationship adds a hyperlink relationship to document.xml.rels
 func (u *Updater) addHyperlinkRelationship(urlStr string) (string, error) {
 	relsPath := filepath.Join(u.tempDir, "word", "_rels", "document.xml.rels")
-	
+
 	raw, err := os.ReadFile(relsPath)
 	if err != nil {
 		return "", fmt.Errorf("read relationships: %w", err)

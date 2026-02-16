@@ -275,33 +275,33 @@ func (u *Updater) findInXML(raw []byte, pattern *regexp.Regexp, maxResults int) 
 
 	// Extract full text for searching
 	fullText := u.extractTextFromXML(raw)
-	
+
 	// Find paragraphs for indexing
 	paragraphs := u.extractParagraphsFromXML(raw)
 
 	// Find all matches in the full text
 	indices := pattern.FindAllStringIndex(fullText, -1)
-	
+
 	for _, idx := range indices {
 		if maxResults > 0 && len(matches) >= maxResults {
 			break
 		}
 
 		matchText := fullText[idx[0]:idx[1]]
-		
+
 		// Determine which paragraph this match belongs to
 		paraIndex := u.findParagraphIndex(fullText, idx[0], paragraphs)
-		
+
 		// Extract context (50 chars before and after)
 		contextBefore := ""
 		contextAfter := ""
-		
+
 		beforeStart := idx[0] - 50
 		if beforeStart < 0 {
 			beforeStart = 0
 		}
 		contextBefore = fullText[beforeStart:idx[0]]
-		
+
 		afterEnd := idx[1] + 50
 		if afterEnd > len(fullText) {
 			afterEnd = len(fullText)

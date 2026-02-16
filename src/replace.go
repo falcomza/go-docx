@@ -178,7 +178,7 @@ func (u *Updater) replaceTextInXML(raw []byte, old, new string, opts ReplaceOpti
 
 	// Extract text runs (<w:t> elements) and replace within them
 	textPattern := regexp.MustCompile(`<w:t[^>]*>(.*?)</w:t>`)
-	
+
 	content = textPattern.ReplaceAllStringFunc(content, func(match string) string {
 		// Check if we've hit the max replacements
 		if opts.MaxReplacements > 0 && *count >= opts.MaxReplacements {
@@ -253,7 +253,7 @@ func (u *Updater) replaceRegexInXML(raw []byte, pattern *regexp.Regexp, replacem
 
 	// Extract text runs (<w:t> elements) and replace within them
 	textPattern := regexp.MustCompile(`<w:t[^>]*>(.*?)</w:t>`)
-	
+
 	content = textPattern.ReplaceAllStringFunc(content, func(match string) string {
 		// Check if we've hit the max replacements
 		if opts.MaxReplacements > 0 && *count >= opts.MaxReplacements {
