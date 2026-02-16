@@ -127,13 +127,14 @@ func (u *Updater) SetHeader(content HeaderFooterContent, opts HeaderOptions) err
 		return NewHeaderFooterError("failed to write header", err)
 	}
 
-	// Add header relationship
-	if err := u.addHeaderFooterRelationship(headerFile, "header"); err != nil {
+	// Add header relationship and get the relationship ID
+	relID, err := u.addHeaderFooterRelationship(headerFile, "header")
+	if err != nil {
 		return NewHeaderFooterError("failed to add header relationship", err)
 	}
 
 	// Update document.xml to reference header
-	if err := u.updateDocumentForHeaderFooter(opts.Type, "header", opts.DifferentFirst, opts.DifferentOddEven); err != nil {
+	if err := u.updateDocumentForHeaderFooter(opts.Type, "header", relID, opts.DifferentFirst, opts.DifferentOddEven); err != nil {
 		return NewHeaderFooterError("failed to update document", err)
 	}
 
@@ -174,13 +175,14 @@ func (u *Updater) SetFooter(content HeaderFooterContent, opts FooterOptions) err
 		return NewHeaderFooterError("failed to write footer", err)
 	}
 
-	// Add footer relationship
-	if err := u.addHeaderFooterRelationship(footerFile, "footer"); err != nil {
+	// Add footer relationship and get the relationship ID
+	relID, err := u.addHeaderFooterRelationship(footerFile, "footer")
+	if err != nil {
 		return NewHeaderFooterError("failed to add footer relationship", err)
 	}
 
 	// Update document.xml to reference footer
-	if err := u.updateDocumentForHeaderFooter(opts.Type, "footer", opts.DifferentFirst, opts.DifferentOddEven); err != nil {
+	if err := u.updateDocumentForHeaderFooter(opts.Type, "footer", relID, opts.DifferentFirst, opts.DifferentOddEven); err != nil {
 		return NewHeaderFooterError("failed to update document", err)
 	}
 
@@ -352,20 +354,21 @@ func (u *Updater) generateDateParagraph(format string) string {
 	return buf.String()
 }
 
-// addHeaderFooterRelationship adds a relationship for header/footer
-func (u *Updater) addHeaderFooterRelationship(filename, hdrFtrType string) error {
+// addHeaderFooterRelationship adds a relationship for header/footer and returns the relationship ID
+func (u *Updater) addHeaderFooterRelationship(filename, hdrFtrType string) (string, error) {
 	relsPath := filepath.Join(u.tempDir, "word", "_rels", "document.xml.rels")
 
 	raw, err := os.ReadFile(relsPath)
 	if err != nil {
-		return fmt.Errorf("read relationships: %w", err)
+		return "", fmt.Errorf("read relationships: %w", err)
 	}
 
 	content := string(raw)
 
 	// Check if relationship already exists
-	if strings.Contains(content, filename) {
-		return nil // Already exists
+	existingIDPattern := fmt.Sprintf(`<Relationship Id="([^"]+)"[^>]*Target="%s"`, regexp.QuoteMeta(filename))
+	if match := regexp.MustCompile(existingIDPattern).FindStringSubmatch(content); len(match) > 1 {
+		return match[1], nil // Already exists, return existing ID
 	}
 
 	// Find next available relationship ID
@@ -390,14 +393,14 @@ func (u *Updater) addHeaderFooterRelationship(filename, hdrFtrType string) error
 
 	// Write updated relationships
 	if err := os.WriteFile(relsPath, []byte(content), 0o644); err != nil {
-		return fmt.Errorf("write relationships: %w", err)
+		return "", fmt.Errorf("write relationships: %w", err)
 	}
 
-	return nil
+	return relID, nil
 }
 
 // updateDocumentForHeaderFooter updates document.xml to reference header/footer
-func (u *Updater) updateDocumentForHeaderFooter(hdrFtrType interface{}, hdrFtr string, differentFirst, differentOddEven bool) error {
+func (u *Updater) updateDocumentForHeaderFooter(hdrFtrType interface{}, hdrFtr string, relID string, differentFirst, differentOddEven bool) error {
 	docPath := filepath.Join(u.tempDir, "word", "document.xml")
 
 	raw, err := os.ReadFile(docPath)
@@ -414,11 +417,11 @@ func (u *Updater) updateDocumentForHeaderFooter(hdrFtrType interface{}, hdrFtr s
 	if sectPrRegex.MatchString(content) {
 		// Update existing sectPr
 		content = sectPrRegex.ReplaceAllStringFunc(content, func(sectPr string) string {
-			return u.addHeaderFooterToSectPr(sectPr, hdrFtrType, hdrFtr, differentFirst, differentOddEven)
+			return u.addHeaderFooterToSectPr(sectPr, hdrFtrType, hdrFtr, relID, differentFirst, differentOddEven)
 		})
 	} else {
 		// Create new sectPr before </w:body>
-		sectPr := u.createSectPrWithHeaderFooter(hdrFtrType, hdrFtr, differentFirst, differentOddEven)
+		sectPr := u.createSectPrWithHeaderFooter(hdrFtrType, hdrFtr, relID, differentFirst, differentOddEven)
 		content = strings.Replace(content, "</w:body>", sectPr+"</w:body>", 1)
 	}
 
@@ -431,14 +434,38 @@ func (u *Updater) updateDocumentForHeaderFooter(hdrFtrType interface{}, hdrFtr s
 }
 
 // addHeaderFooterToSectPr adds header/footer reference to existing sectPr
-func (u *Updater) addHeaderFooterToSectPr(sectPr string, hdrFtrType interface{}, hdrFtr string, differentFirst, differentOddEven bool) string {
-	// This is a simplified implementation
-	// In production, you'd want to parse the XML properly
+func (u *Updater) addHeaderFooterToSectPr(sectPr string, hdrFtrType interface{}, hdrFtr string, relID string, differentFirst, differentOddEven bool) string {
+	// Determine reference type
+	refType := "default"
+	if hdrFtrType == HeaderFirst || hdrFtrType == FooterFirst {
+		refType = "first"
+	} else if hdrFtrType == HeaderEven || hdrFtrType == FooterEven {
+		refType = "even"
+	}
+
+	// Create reference element
+	var refElement string
+	if hdrFtr == "header" {
+		refElement = fmt.Sprintf(`<w:headerReference w:type="%s" r:id="%s"/>`, refType, relID)
+	} else {
+		refElement = fmt.Sprintf(`<w:footerReference w:type="%s" r:id="%s"/>`, refType, relID)
+	}
+
+	// Check if reference already exists for this type
+	refPattern := fmt.Sprintf(`<w:%sReference w:type="%s"[^>]*/>`, hdrFtr, refType)
+	if matched, _ := regexp.MatchString(refPattern, sectPr); matched {
+		// Replace existing reference
+		sectPr = regexp.MustCompile(refPattern).ReplaceAllString(sectPr, refElement)
+	} else {
+		// Insert before </w:sectPr>
+		sectPr = strings.Replace(sectPr, "</w:sectPr>", refElement+"</w:sectPr>", 1)
+	}
+
 	return sectPr
 }
 
 // createSectPrWithHeaderFooter creates a new sectPr with header/footer
-func (u *Updater) createSectPrWithHeaderFooter(hdrFtrType interface{}, hdrFtr string, differentFirst, differentOddEven bool) string {
+func (u *Updater) createSectPrWithHeaderFooter(hdrFtrType interface{}, hdrFtr string, relID string, differentFirst, differentOddEven bool) string {
 	var buf strings.Builder
 
 	buf.WriteString("<w:sectPr>")
@@ -447,12 +474,19 @@ func (u *Updater) createSectPrWithHeaderFooter(hdrFtrType interface{}, hdrFtr st
 		buf.WriteString("<w:titlePg/>")
 	}
 
-	// Add header/footer reference
-	// This is simplified - in production, match the rId from relationships
+	// Determine reference type
+	refType := "default"
+	if hdrFtrType == HeaderFirst || hdrFtrType == FooterFirst {
+		refType = "first"
+	} else if hdrFtrType == HeaderEven || hdrFtrType == FooterEven {
+		refType = "even"
+	}
+
+	// Add header/footer reference with actual relationship ID
 	if hdrFtr == "header" {
-		buf.WriteString(`<w:headerReference w:type="default" r:id="rId7"/>`)
+		buf.WriteString(fmt.Sprintf(`<w:headerReference w:type="%s" r:id="%s"/>`, refType, relID))
 	} else {
-		buf.WriteString(`<w:footerReference w:type="default" r:id="rId8"/>`)
+		buf.WriteString(fmt.Sprintf(`<w:footerReference w:type="%s" r:id="%s"/>`, refType, relID))
 	}
 
 	buf.WriteString("</w:sectPr>")
