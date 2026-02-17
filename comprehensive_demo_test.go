@@ -235,9 +235,9 @@ func testCompleteWorkflowDemo(t *testing.T) {
 
 	// 6. Insert new chart
 	if err := updater.InsertChart(ChartOptions{
-		Position:  PositionEnd,
-		ChartKind: ChartKindLine,
-		Title:     "Customer Acquisition Trend",
+		Position:   PositionEnd,
+		ChartKind:  ChartKindLine,
+		Title:      "Customer Acquisition Trend",
 		Categories: []string{"Jan", "Feb", "Mar", "Apr", "May", "Jun"},
 		Series: []SeriesData{
 			{Name: "New Customers", Values: []float64{45, 52, 58, 64, 70, 78}},
