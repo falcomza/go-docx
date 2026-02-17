@@ -96,9 +96,9 @@ func generateCaptionXML(opts CaptionOptions) []byte {
 
 	buf.WriteString("</w:pPr>")
 
-	// Add caption label (e.g., "Figure" or "Table")
+	// Add caption label (e.g., "Figure" or "Table") with preserved space
 	buf.WriteString("<w:r>")
-	buf.WriteString("<w:t>")
+	buf.WriteString(`<w:t xml:space="preserve">`)
 	buf.WriteString(string(opts.Type))
 	buf.WriteString(" </w:t>")
 	buf.WriteString("</w:r>")
