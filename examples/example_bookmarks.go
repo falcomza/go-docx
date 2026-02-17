@@ -22,7 +22,7 @@ func main() {
 	fmt.Println("\n1. Creating empty bookmarks as position markers...")
 	emptyOpts := docxupdater.DefaultBookmarkOptions()
 	emptyOpts.Position = docxupdater.PositionEnd
-	
+
 	if err := u.CreateBookmark("section_marker", emptyOpts); err != nil {
 		log.Printf("Warning: Failed to create empty bookmark: %v", err)
 	}
@@ -32,7 +32,7 @@ func main() {
 	textOpts := docxupdater.DefaultBookmarkOptions()
 	textOpts.Position = docxupdater.PositionEnd
 	textOpts.Style = docxupdater.StyleHeading1
-	
+
 	if err := u.CreateBookmarkWithText("executive_summary", "Executive Summary", textOpts); err != nil {
 		log.Printf("Warning: Failed to create bookmark with text: %v", err)
 	}
@@ -48,12 +48,12 @@ func main() {
 
 	// Example 3: Create more bookmarked sections
 	fmt.Println("3. Creating multiple bookmarked sections...")
-	
+
 	sections := map[string]string{
-		"introduction":   "Introduction",
-		"methodology":    "Methodology",
-		"results":        "Results and Analysis",
-		"conclusion":     "Conclusion",
+		"introduction":    "Introduction",
+		"methodology":     "Methodology",
+		"results":         "Results and Analysis",
+		"conclusion":      "Conclusion",
 		"recommendations": "Recommendations",
 	}
 
@@ -61,7 +61,7 @@ func main() {
 		sectionOpts := docxupdater.DefaultBookmarkOptions()
 		sectionOpts.Position = docxupdater.PositionEnd
 		sectionOpts.Style = docxupdater.StyleHeading2
-		
+
 		if err := u.CreateBookmarkWithText(bookmarkName, title, sectionOpts); err != nil {
 			log.Printf("Warning: Failed to create bookmark '%s': %v", bookmarkName, err)
 			continue
@@ -80,7 +80,7 @@ func main() {
 
 	// Example 4: Create table of contents with internal links
 	fmt.Println("4. Creating table of contents with internal links...")
-	
+
 	// Insert TOC heading at the beginning
 	tocHeadingOpts := docxupdater.ParagraphOptions{
 		Text:     "Table of Contents",
@@ -110,7 +110,7 @@ func main() {
 		linkOpts.Anchor = "Table of Contents"
 		linkOpts.Color = "0563C1" // Word blue
 		linkOpts.Underline = true
-		
+
 		if err := u.InsertInternalLink(item.text, item.bookmark, linkOpts); err != nil {
 			log.Printf("Warning: Failed to create internal link for '%s': %v", item.text, err)
 		}
@@ -118,7 +118,7 @@ func main() {
 
 	// Example 5: Wrap existing text in a bookmark
 	fmt.Println("5. Wrapping existing text in bookmarks...")
-	
+
 	// First add some text
 	if err := u.InsertParagraph(docxupdater.ParagraphOptions{
 		Text:     "This is a key finding that we want to reference later.",
@@ -142,7 +142,7 @@ func main() {
 
 	// Example 6: Create bookmarks at specific positions
 	fmt.Println("6. Creating bookmarks at specific positions...")
-	
+
 	// Add anchor text
 	if err := u.InsertParagraph(docxupdater.ParagraphOptions{
 		Text:     "This is the middle section of the document.",
@@ -162,7 +162,7 @@ func main() {
 
 	// Example 7: Valid and invalid bookmark names
 	fmt.Println("7. Demonstrating bookmark name validation...")
-	
+
 	validNames := []string{
 		"valid_bookmark",
 		"ValidBookmark123",
@@ -170,10 +170,10 @@ func main() {
 	}
 
 	invalidNames := []string{
-		"invalid bookmark",  // contains space
-		"1invalid",          // starts with digit
-		"invalid-name",      // contains hyphen
-		"_Tocinvalid",       // reserved prefix
+		"invalid bookmark", // contains space
+		"1invalid",         // starts with digit
+		"invalid-name",     // contains hyphen
+		"_Tocinvalid",      // reserved prefix
 	}
 
 	fmt.Println("   Valid bookmark names:")

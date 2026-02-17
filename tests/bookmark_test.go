@@ -84,16 +84,16 @@ func TestCreateBookmarkWithText(t *testing.T) {
 	if !strings.Contains(docXML, "Executive Summary") {
 		t.Error("Bookmark text not found in document.xml")
 	}
-	
+
 	// Verify proper structure: bookmarkStart, text, bookmarkEnd
 	bookmarkStartIdx := strings.Index(docXML, `<w:bookmarkStart`)
 	textIdx := strings.Index(docXML, "Executive Summary")
 	bookmarkEndIdx := strings.Index(docXML, `<w:bookmarkEnd`)
-	
+
 	if bookmarkStartIdx == -1 || textIdx == -1 || bookmarkEndIdx == -1 {
 		t.Fatal("Missing bookmark structure elements")
 	}
-	
+
 	if !(bookmarkStartIdx < textIdx && textIdx < bookmarkEndIdx) {
 		t.Error("Bookmark structure is not in correct order (start, text, end)")
 	}
@@ -139,15 +139,15 @@ func TestWrapTextInBookmark(t *testing.T) {
 	if !strings.Contains(docXML, `w:name="important_section"`) {
 		t.Error("Bookmark name not found in document.xml")
 	}
-	
+
 	// Verify bookmarkStart appears before the text
 	bookmarkStartIdx := strings.Index(docXML, `<w:bookmarkStart`)
 	textIdx := strings.Index(docXML, "important content")
-	
+
 	if bookmarkStartIdx == -1 || textIdx == -1 {
 		t.Fatal("Bookmark or text not found")
 	}
-	
+
 	if bookmarkStartIdx > textIdx {
 		t.Error("Bookmark start should appear before the text")
 	}
@@ -190,12 +190,12 @@ func TestBookmarkWithInternalLink(t *testing.T) {
 
 	// Read document.xml and verify both bookmark and link exist
 	docXML := readZipEntry(t, outputPath, "word/document.xml")
-	
+
 	// Check bookmark exists
 	if !strings.Contains(docXML, `w:name="conclusion_section"`) {
 		t.Error("Bookmark name not found in document.xml")
 	}
-	
+
 	// Check internal link exists with correct anchor
 	if !strings.Contains(docXML, `w:anchor="conclusion_section"`) {
 		t.Error("Internal link anchor not found in document.xml")
@@ -228,12 +228,12 @@ func TestBookmarkNameValidation(t *testing.T) {
 		{"valid_bookmark", false},
 		{"ValidBookmark", false},
 		{"Valid_Bookmark_123", false},
-		{"1invalid", true},       // starts with digit
-		{"invalid bookmark", true}, // contains space
-		{"invalid-bookmark", true}, // contains hyphen
-		{"_Tocinvalid", true},     // reserved prefix
-		{"", true},                // empty
-		{strings.Repeat("a", 41), true}, // too long (>40 chars)
+		{"1invalid", true},               // starts with digit
+		{"invalid bookmark", true},       // contains space
+		{"invalid-bookmark", true},       // contains hyphen
+		{"_Tocinvalid", true},            // reserved prefix
+		{"", true},                       // empty
+		{strings.Repeat("a", 41), true},  // too long (>40 chars)
 		{strings.Repeat("a", 40), false}, // exactly 40 chars - ok
 	}
 
@@ -283,13 +283,13 @@ func TestMultipleBookmarks(t *testing.T) {
 
 	// Read document.xml and verify all bookmarks exist with unique IDs
 	docXML := readZipEntry(t, outputPath, "word/document.xml")
-	
+
 	for _, name := range bookmarks {
 		if !strings.Contains(docXML, `w:name="`+name+`"`) {
 			t.Errorf("Bookmark '%s' not found in document.xml", name)
 		}
 	}
-	
+
 	// Count bookmark IDs to ensure they are unique
 	// Each bookmark creates one start and one end tag with the same ID
 	idPattern := `w:id="(\d+)"`
@@ -357,7 +357,7 @@ func TestBookmarkPositions(t *testing.T) {
 
 	// Read document.xml and verify bookmarks
 	docXML := readZipEntry(t, outputPath, "word/document.xml")
-	
+
 	if !strings.Contains(docXML, `w:name="bookmark_beginning"`) {
 		t.Error("Bookmark at beginning not found")
 	}
