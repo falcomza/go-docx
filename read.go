@@ -296,10 +296,7 @@ func (u *Updater) findInXML(raw []byte, pattern *regexp.Regexp, maxResults int) 
 		contextBefore := ""
 		contextAfter := ""
 
-		beforeStart := idx[0] - 50
-		if beforeStart < 0 {
-			beforeStart = 0
-		}
+		beforeStart := max(idx[0]-50, 0)
 		contextBefore = fullText[beforeStart:idx[0]]
 
 		afterEnd := idx[1] + 50

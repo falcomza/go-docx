@@ -53,8 +53,8 @@ func (u *Updater) InsertSectionBreak(opts BreakOptions) error {
 		return fmt.Errorf("invalid section break type: %w", err)
 	}
 
-	// Generate section break XML
-	sectionBreakXML := generateSectionBreakXML(opts.SectionType)
+	// Generate section break XML with optional page layout
+	sectionBreakXML := generateSectionBreakXML(opts.SectionType, opts.PageLayout)
 
 	// Read document.xml
 	docPath := filepath.Join(u.tempDir, "word", "document.xml")
@@ -86,7 +86,7 @@ func generatePageBreakXML() []byte {
 
 // generateSectionBreakXML creates the XML for a section break
 // Section breaks are more complex and define how the next section starts
-func generateSectionBreakXML(breakType SectionBreakType) []byte {
+func generateSectionBreakXML(breakType SectionBreakType, pageLayout *PageLayoutOptions) []byte {
 	var buf bytes.Buffer
 
 	buf.WriteString("<w:p>")
@@ -96,12 +96,28 @@ func generateSectionBreakXML(breakType SectionBreakType) []byte {
 	// Add section type
 	buf.WriteString(fmt.Sprintf(`<w:type w:val="%s"/>`, breakType))
 
-	// Default page settings (8.5" x 11" letter size)
-	// Width: 12240 twips (8.5"), Height: 15840 twips (11")
-	buf.WriteString(`<w:pgSz w:w="12240" w:h="15840"/>`)
+	// Use provided page layout or defaults
+	if pageLayout == nil {
+		pageLayout = PageLayoutLetterPortrait()
+	}
 
-	// Default margins (1" all around = 1440 twips)
-	buf.WriteString(`<w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/>`)
+	// Page size with orientation
+	orientAttr := ""
+	if pageLayout.Orientation == OrientationLandscape {
+		orientAttr = ` w:orient="landscape"`
+	}
+	buf.WriteString(fmt.Sprintf(`<w:pgSz w:w="%d" w:h="%d"%s/>`,
+		pageLayout.PageWidth, pageLayout.PageHeight, orientAttr))
+
+	// Page margins
+	buf.WriteString(fmt.Sprintf(`<w:pgMar w:top="%d" w:right="%d" w:bottom="%d" w:left="%d" w:header="%d" w:footer="%d" w:gutter="%d"/>`,
+		pageLayout.MarginTop,
+		pageLayout.MarginRight,
+		pageLayout.MarginBottom,
+		pageLayout.MarginLeft,
+		pageLayout.MarginHeader,
+		pageLayout.MarginFooter,
+		pageLayout.MarginGutter))
 
 	// Default column count
 	buf.WriteString(`<w:cols w:space="720"/>`)
@@ -197,19 +213,19 @@ func insertBreakAfterAnchor(raw []byte, breakXML []byte, anchor string) ([]byte,
 // insertBreakBeforeAnchor inserts a break before the paragraph containing the anchor text
 func insertBreakBeforeAnchor(raw []byte, breakXML []byte, anchor string) ([]byte, error) {
 	anchorBytes := []byte(anchor)
-	pos := bytes.Index(raw, anchorBytes)
-	if pos == -1 {
+	before, _, ok := bytes.Cut(raw, anchorBytes)
+	if !ok {
 		return nil, fmt.Errorf("anchor text not found: %s", anchor)
 	}
 
 	// Find the start of the paragraph containing the anchor
 	paraStart := []byte("<w:p>")
 	// Search backwards from anchor position
-	startPos := bytes.LastIndex(raw[:pos], paraStart)
+	startPos := bytes.LastIndex(before, paraStart)
 	if startPos == -1 {
 		// Try with paragraph properties
 		paraStart = []byte("<w:p ")
-		startPos = bytes.LastIndex(raw[:pos], paraStart)
+		startPos = bytes.LastIndex(before, paraStart)
 		if startPos == -1 {
 			return nil, fmt.Errorf("paragraph start not found before anchor text")
 		}
@@ -220,4 +236,99 @@ func insertBreakBeforeAnchor(raw []byte, breakXML []byte, anchor string) ([]byte
 	result = append(result, breakXML...)
 	result = append(result, raw[startPos:]...)
 	return result, nil
+}
+
+// SetPageLayout sets the page layout for the current or last section in the document
+// This modifies the section properties (sectPr) of the document
+func (u *Updater) SetPageLayout(pageLayout PageLayoutOptions) error {
+	if u == nil {
+		return fmt.Errorf("updater is nil")
+	}
+
+	// Read document.xml
+	docPath := filepath.Join(u.tempDir, "word", "document.xml")
+	raw, err := os.ReadFile(docPath)
+	if err != nil {
+		return fmt.Errorf("read document.xml: %w", err)
+	}
+
+	content := string(raw)
+
+	// Find the last <w:sectPr> section (usually at the end of document before </w:body>)
+	sectPrStart := "<w:sectPr>"
+	sectPrEnd := "</w:sectPr>"
+
+	lastIdx := -1
+	searchPos := 0
+	for {
+		idx := bytes.Index([]byte(content[searchPos:]), []byte(sectPrStart))
+		if idx == -1 {
+			break
+		}
+		lastIdx = searchPos + idx
+		searchPos = lastIdx + 1
+	}
+
+	if lastIdx == -1 {
+		// No sectPr found, create one before </w:body>
+		bodyEnd := "</w:body>"
+		bodyIdx := bytes.Index([]byte(content), []byte(bodyEnd))
+		if bodyIdx == -1 {
+			return fmt.Errorf("document body not found")
+		}
+
+		// Generate section properties XML
+		sectPrXML := generateSectionPropertiesXML(pageLayout)
+		content = content[:bodyIdx] + sectPrXML + content[bodyIdx:]
+	} else {
+		// Update existing sectPr
+		endIdx := bytes.Index([]byte(content[lastIdx:]), []byte(sectPrEnd))
+		if endIdx == -1 {
+			return fmt.Errorf("malformed section properties")
+		}
+		endIdx += lastIdx + len(sectPrEnd)
+
+		// Generate new section properties
+		sectPrXML := generateSectionPropertiesXML(pageLayout)
+		content = content[:lastIdx] + sectPrXML + content[endIdx:]
+	}
+
+	// Write updated document
+	if err := os.WriteFile(docPath, []byte(content), 0o644); err != nil {
+		return fmt.Errorf("write document.xml: %w", err)
+	}
+
+	return nil
+}
+
+// generateSectionPropertiesXML generates the <w:sectPr> XML for page layout
+func generateSectionPropertiesXML(pageLayout PageLayoutOptions) string {
+	var buf bytes.Buffer
+
+	buf.WriteString("<w:sectPr>")
+
+	// Page size with orientation
+	orientAttr := ""
+	if pageLayout.Orientation == OrientationLandscape {
+		orientAttr = ` w:orient="landscape"`
+	}
+	buf.WriteString(fmt.Sprintf(`<w:pgSz w:w="%d" w:h="%d"%s/>`,
+		pageLayout.PageWidth, pageLayout.PageHeight, orientAttr))
+
+	// Page margins
+	buf.WriteString(fmt.Sprintf(`<w:pgMar w:top="%d" w:right="%d" w:bottom="%d" w:left="%d" w:header="%d" w:footer="%d" w:gutter="%d"/>`,
+		pageLayout.MarginTop,
+		pageLayout.MarginRight,
+		pageLayout.MarginBottom,
+		pageLayout.MarginLeft,
+		pageLayout.MarginHeader,
+		pageLayout.MarginFooter,
+		pageLayout.MarginGutter))
+
+	// Default column settings
+	buf.WriteString(`<w:cols w:space="720"/>`)
+
+	buf.WriteString("</w:sectPr>")
+
+	return buf.String()
 }

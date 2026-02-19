@@ -488,7 +488,7 @@ func TestMultipleChartsCaptionsAutoNumbering(t *testing.T) {
 
 	// Verify all captions exist
 	docXML := readZipEntry(t, outputPath, "word/document.xml")
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		expected := "Chart number " + string(rune('A'+i))
 		if !strings.Contains(docXML, expected) {
 			t.Errorf("Caption description %q not found in document.xml", expected)

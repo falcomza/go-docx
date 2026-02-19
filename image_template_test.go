@@ -382,8 +382,8 @@ func createTestImageForTemplate(t *testing.T, path string, width, height int) {
 
 	// Create a gradient image
 	img := image.NewRGBA(image.Rect(0, 0, width, height))
-	for y := 0; y < height; y++ {
-		for x := 0; x < width; x++ {
+	for y := range height {
+		for x := range width {
 			// Create a nice gradient pattern
 			r := uint8((x * 255) / width)
 			g := uint8((y * 255) / height)
@@ -394,11 +394,11 @@ func createTestImageForTemplate(t *testing.T, path string, width, height int) {
 
 	// Add a border
 	borderColor := color.RGBA{0, 0, 0, 255}
-	for x := 0; x < width; x++ {
+	for x := range width {
 		img.Set(x, 0, borderColor)
 		img.Set(x, height-1, borderColor)
 	}
-	for y := 0; y < height; y++ {
+	for y := range height {
 		img.Set(0, y, borderColor)
 		img.Set(width-1, y, borderColor)
 	}

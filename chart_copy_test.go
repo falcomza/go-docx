@@ -129,7 +129,7 @@ func TestCopyChartMultipleTimes(t *testing.T) {
 	}
 
 	// Copy chart multiple times
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		newIndex, err := updater.CopyChart(1, afterText)
 		if err != nil {
 			t.Fatalf("CopyChart iteration %d failed: %v", i, err)

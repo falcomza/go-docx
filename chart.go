@@ -645,7 +645,7 @@ func (u *Updater) generateChartDrawingWithSize(chartIndex int, relId string, wid
 
 	template := `<w:p><w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0" wp14:anchorId="%08X" wp14:editId="%08X"><wp:extent cx="%d" cy="%d"/><wp:effectExtent l="0" t="0" r="15875" b="12700"/><wp:docPr id="%d" name="Chart %d"/><wp:cNvGraphicFramePr/><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart"><c:chart xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:id="%s"/></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`
 
-	return []byte(fmt.Sprintf(template, anchorId, editId, width, height, docPrId, chartIndex, relId)), nil
+	return fmt.Appendf(nil, template, anchorId, editId, width, height, docPrId, chartIndex, relId), nil
 }
 
 // ==================== Extended Chart Functionality ====================

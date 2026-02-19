@@ -400,7 +400,7 @@ func (u *Updater) addHeaderFooterRelationship(filename, hdrFtrType string) (stri
 }
 
 // updateDocumentForHeaderFooter updates document.xml to reference header/footer
-func (u *Updater) updateDocumentForHeaderFooter(hdrFtrType interface{}, hdrFtr string, relID string, differentFirst, differentOddEven bool) error {
+func (u *Updater) updateDocumentForHeaderFooter(hdrFtrType any, hdrFtr string, relID string, differentFirst, differentOddEven bool) error {
 	docPath := filepath.Join(u.tempDir, "word", "document.xml")
 
 	raw, err := os.ReadFile(docPath)
@@ -434,7 +434,7 @@ func (u *Updater) updateDocumentForHeaderFooter(hdrFtrType interface{}, hdrFtr s
 }
 
 // addHeaderFooterToSectPr adds header/footer reference to existing sectPr
-func (u *Updater) addHeaderFooterToSectPr(sectPr string, hdrFtrType interface{}, hdrFtr string, relID string, differentFirst, differentOddEven bool) string {
+func (u *Updater) addHeaderFooterToSectPr(sectPr string, hdrFtrType any, hdrFtr string, relID string, differentFirst, differentOddEven bool) string {
 	// Determine reference type
 	refType := "default"
 	if hdrFtrType == HeaderFirst || hdrFtrType == FooterFirst {
@@ -465,7 +465,7 @@ func (u *Updater) addHeaderFooterToSectPr(sectPr string, hdrFtrType interface{},
 }
 
 // createSectPrWithHeaderFooter creates a new sectPr with header/footer
-func (u *Updater) createSectPrWithHeaderFooter(hdrFtrType interface{}, hdrFtr string, relID string, differentFirst, differentOddEven bool) string {
+func (u *Updater) createSectPrWithHeaderFooter(hdrFtrType any, hdrFtr string, relID string, differentFirst, differentOddEven bool) string {
 	var buf strings.Builder
 
 	buf.WriteString("<w:sectPr>")

@@ -67,7 +67,7 @@ type DocxError struct {
 	Code    ErrorCode
 	Message string
 	Err     error
-	Context map[string]interface{}
+	Context map[string]any
 }
 
 // Error implements the error interface
@@ -84,9 +84,9 @@ func (e *DocxError) Unwrap() error {
 }
 
 // WithContext adds context to the error
-func (e *DocxError) WithContext(key string, value interface{}) *DocxError {
+func (e *DocxError) WithContext(key string, value any) *DocxError {
 	if e.Context == nil {
-		e.Context = make(map[string]interface{})
+		e.Context = make(map[string]any)
 	}
 	e.Context[key] = value
 	return e
@@ -99,7 +99,7 @@ func NewChartNotFoundError(index int) error {
 	return &DocxError{
 		Code:    ErrCodeChartNotFound,
 		Message: "chart not found",
-		Context: map[string]interface{}{"index": index},
+		Context: map[string]any{"index": index},
 	}
 }
 
@@ -116,7 +116,7 @@ func NewImageNotFoundError(path string) error {
 	return &DocxError{
 		Code:    ErrCodeImageNotFound,
 		Message: "image file not found",
-		Context: map[string]interface{}{"path": path},
+		Context: map[string]any{"path": path},
 	}
 }
 
@@ -125,7 +125,7 @@ func NewImageFormatError(format string) error {
 	return &DocxError{
 		Code:    ErrCodeImageFormat,
 		Message: "unsupported image format",
-		Context: map[string]interface{}{"format": format},
+		Context: map[string]any{"format": format},
 	}
 }
 
@@ -134,7 +134,7 @@ func NewTextNotFoundError(text string) error {
 	return &DocxError{
 		Code:    ErrCodeTextNotFound,
 		Message: "text not found in document",
-		Context: map[string]interface{}{"text": text},
+		Context: map[string]any{"text": text},
 	}
 }
 
@@ -144,7 +144,7 @@ func NewInvalidRegexError(pattern string, err error) error {
 		Code:    ErrCodeInvalidRegex,
 		Message: "invalid regular expression pattern",
 		Err:     err,
-		Context: map[string]interface{}{"pattern": pattern},
+		Context: map[string]any{"pattern": pattern},
 	}
 }
 
@@ -154,7 +154,7 @@ func NewXMLParseError(file string, err error) error {
 		Code:    ErrCodeXMLParse,
 		Message: "failed to parse XML",
 		Err:     err,
-		Context: map[string]interface{}{"file": file},
+		Context: map[string]any{"file": file},
 	}
 }
 
@@ -164,7 +164,7 @@ func NewXMLWriteError(file string, err error) error {
 		Code:    ErrCodeXMLWrite,
 		Message: "failed to write XML",
 		Err:     err,
-		Context: map[string]interface{}{"file": file},
+		Context: map[string]any{"file": file},
 	}
 }
 
@@ -182,7 +182,7 @@ func NewValidationError(field, reason string) error {
 	return &DocxError{
 		Code:    ErrCodeValidation,
 		Message: reason,
-		Context: map[string]interface{}{"field": field},
+		Context: map[string]any{"field": field},
 	}
 }
 
@@ -191,7 +191,7 @@ func NewFileNotFoundError(path string) error {
 	return &DocxError{
 		Code:    ErrCodeFileNotFound,
 		Message: "file not found",
-		Context: map[string]interface{}{"path": path},
+		Context: map[string]any{"path": path},
 	}
 }
 
@@ -218,7 +218,7 @@ func NewInvalidURLError(url string) error {
 	return &DocxError{
 		Code:    ErrCodeInvalidURL,
 		Message: "invalid URL format",
-		Context: map[string]interface{}{"url": url},
+		Context: map[string]any{"url": url},
 	}
 }
 

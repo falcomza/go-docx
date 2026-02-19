@@ -124,13 +124,13 @@ func removeEmptyElements(content string) string {
 		"Company",
 		"Manager",
 	}
-	
+
 	// Remove empty elements for each tag
 	for _, tag := range emptyTags {
 		// Pattern for completely empty element: <tag></tag>
 		emptyPattern := fmt.Sprintf(`<%s></%s>`, regexp.QuoteMeta(tag), regexp.QuoteMeta(tag))
 		content = regexp.MustCompile(emptyPattern).ReplaceAllString(content, "")
-		
+
 		// Pattern for empty element with whitespace: <tag> </tag> or <tag>   </tag>
 		emptyWithSpacePattern := fmt.Sprintf(`<%s>\s*</%s>`, regexp.QuoteMeta(tag), regexp.QuoteMeta(tag))
 		content = regexp.MustCompile(emptyWithSpacePattern).ReplaceAllString(content, "")

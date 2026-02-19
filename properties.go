@@ -63,7 +63,7 @@ type CustomProperty struct {
 	Name string
 
 	// Value of the property (string, int, float64, bool, or time.Time)
-	Value interface{}
+	Value any
 
 	// Type is inferred from Value, but can be explicitly set
 	// Valid types: "lpwstr" (string), "i4" (int), "r8" (float), "bool", "date"
@@ -418,7 +418,7 @@ func (u *Updater) generateCustomPropertiesXML(properties []CustomProperty) strin
 }
 
 // inferCustomPropertyType infers the vt type from Go value
-func (u *Updater) inferCustomPropertyType(value interface{}) string {
+func (u *Updater) inferCustomPropertyType(value any) string {
 	switch value.(type) {
 	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
 		return "i4"

@@ -14,7 +14,7 @@ import (
 // Usage: go run validate_relationships.go <path-to-docx-file>
 
 type Relationships struct {
-	XMLName       xml.Name       `xml:"Relationships"`
+	XMLName      xml.Name       `xml:"Relationships"`
 	Relationship []Relationship `xml:"Relationship"`
 }
 
@@ -73,7 +73,7 @@ func main() {
 		errors++
 	} else {
 		fmt.Printf("✓ Found %d default types and %d overrides\n", len(contentTypes.Default), len(contentTypes.Override))
-		
+
 		// Check that all Override PartNames exist
 		for _, override := range contentTypes.Override {
 			partName := strings.TrimPrefix(override.PartName, "/")
@@ -121,7 +121,7 @@ func main() {
 		// Validate each relationship
 		for _, rel := range rels.Relationship {
 			target := rel.Target
-			
+
 			// Skip external relationships
 			if strings.HasPrefix(target, "http://") || strings.HasPrefix(target, "https://") || strings.HasPrefix(target, "mailto:") {
 				continue
@@ -141,7 +141,7 @@ func main() {
 
 			// Check if target exists
 			if !fileMap[targetPath] {
-				fmt.Printf("❌ %s: Relationship ID=%s targets missing file: %s (resolved to: %s)\n", 
+				fmt.Printf("❌ %s: Relationship ID=%s targets missing file: %s (resolved to: %s)\n",
 					relsFile, rel.ID, target, targetPath)
 				errors++
 			}

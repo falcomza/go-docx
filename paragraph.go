@@ -141,10 +141,7 @@ func generateParagraphXML(opts ParagraphOptions) []byte {
 
 		if numID > 0 {
 			// Validate and constrain list level
-			level := opts.ListLevel
-			if level < 0 {
-				level = 0
-			}
+			level := max(opts.ListLevel, 0)
 			if level > 8 {
 				level = 8
 			}

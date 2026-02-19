@@ -71,4 +71,154 @@ type BreakOptions struct {
 
 	// Type of section break (only used for section breaks)
 	SectionType SectionBreakType
+
+	// Page layout settings for the section (optional)
+	PageLayout *PageLayoutOptions
+}
+
+// PageOrientation defines page orientation
+type PageOrientation string
+
+const (
+	// OrientationPortrait sets page to portrait mode (taller than wide)
+	OrientationPortrait PageOrientation = "portrait"
+	// OrientationLandscape sets page to landscape mode (wider than tall)
+	OrientationLandscape PageOrientation = "landscape"
+)
+
+// PageLayoutOptions defines page layout settings for a section
+type PageLayoutOptions struct {
+	// Page dimensions in twips (1/1440 inch)
+	// Use predefined page sizes or custom values
+	PageWidth  int // Width in twips (e.g., 12240 for 8.5")
+	PageHeight int // Height in twips (e.g., 15840 for 11")
+
+	// Page orientation
+	Orientation PageOrientation
+
+	// Margins in twips (1/1440 inch)
+	MarginTop    int // Top margin
+	MarginRight  int // Right margin
+	MarginBottom int // Bottom margin
+	MarginLeft   int // Left margin
+	MarginHeader int // Header distance from edge
+	MarginFooter int // Footer distance from edge
+	MarginGutter int // Gutter margin for binding
+}
+
+// Page size constants in twips (1/1440 inch)
+const (
+	// US Letter: 8.5" × 11"
+	PageWidthLetter  = 12240
+	PageHeightLetter = 15840
+
+	// US Legal: 8.5" × 14"
+	PageWidthLegal  = 12240
+	PageHeightLegal = 20160
+
+	// A4: 210mm × 297mm (8.27" × 11.69")
+	PageWidthA4  = 11906
+	PageHeightA4 = 16838
+
+	// A3: 297mm × 420mm (11.69" × 16.54")
+	PageWidthA3  = 16838
+	PageHeightA3 = 23811
+
+	// Tabloid/Ledger: 11" × 17"
+	PageWidthTabloid  = 15840
+	PageHeightTabloid = 24480
+
+	// Default margin: 1 inch
+	MarginDefault = 1440
+
+	// Narrow margin: 0.5 inch
+	MarginNarrow = 720
+
+	// Wide margin: 1.5 inch
+	MarginWide = 2160
+
+	// Default header/footer margin: 0.5 inch
+	MarginHeaderFooterDefault = 720
+)
+
+// Helper functions to create common page layouts
+
+// PageLayoutLetterPortrait creates a US Letter portrait layout with 1" margins
+func PageLayoutLetterPortrait() *PageLayoutOptions {
+	return &PageLayoutOptions{
+		PageWidth:    PageWidthLetter,
+		PageHeight:   PageHeightLetter,
+		Orientation:  OrientationPortrait,
+		MarginTop:    MarginDefault,
+		MarginRight:  MarginDefault,
+		MarginBottom: MarginDefault,
+		MarginLeft:   MarginDefault,
+		MarginHeader: MarginHeaderFooterDefault,
+		MarginFooter: MarginHeaderFooterDefault,
+		MarginGutter: 0,
+	}
+}
+
+// PageLayoutLetterLandscape creates a US Letter landscape layout with 1" margins
+func PageLayoutLetterLandscape() *PageLayoutOptions {
+	return &PageLayoutOptions{
+		PageWidth:    PageHeightLetter, // Swapped for landscape
+		PageHeight:   PageWidthLetter,  // Swapped for landscape
+		Orientation:  OrientationLandscape,
+		MarginTop:    MarginDefault,
+		MarginRight:  MarginDefault,
+		MarginBottom: MarginDefault,
+		MarginLeft:   MarginDefault,
+		MarginHeader: MarginHeaderFooterDefault,
+		MarginFooter: MarginHeaderFooterDefault,
+		MarginGutter: 0,
+	}
+}
+
+// PageLayoutA4Portrait creates an A4 portrait layout with default margins
+func PageLayoutA4Portrait() *PageLayoutOptions {
+	return &PageLayoutOptions{
+		PageWidth:    PageWidthA4,
+		PageHeight:   PageHeightA4,
+		Orientation:  OrientationPortrait,
+		MarginTop:    MarginDefault,
+		MarginRight:  MarginDefault,
+		MarginBottom: MarginDefault,
+		MarginLeft:   MarginDefault,
+		MarginHeader: MarginHeaderFooterDefault,
+		MarginFooter: MarginHeaderFooterDefault,
+		MarginGutter: 0,
+	}
+}
+
+// PageLayoutA4Landscape creates an A4 landscape layout with default margins
+func PageLayoutA4Landscape() *PageLayoutOptions {
+	return &PageLayoutOptions{
+		PageWidth:    PageHeightA4, // Swapped for landscape
+		PageHeight:   PageWidthA4,  // Swapped for landscape
+		Orientation:  OrientationLandscape,
+		MarginTop:    MarginDefault,
+		MarginRight:  MarginDefault,
+		MarginBottom: MarginDefault,
+		MarginLeft:   MarginDefault,
+		MarginHeader: MarginHeaderFooterDefault,
+		MarginFooter: MarginHeaderFooterDefault,
+		MarginGutter: 0,
+	}
+}
+
+// PageLayoutLegalPortrait creates a US Legal portrait layout with 1" margins
+func PageLayoutLegalPortrait() *PageLayoutOptions {
+	return &PageLayoutOptions{
+		PageWidth:    PageWidthLegal,
+		PageHeight:   PageHeightLegal,
+		Orientation:  OrientationPortrait,
+		MarginTop:    MarginDefault,
+		MarginRight:  MarginDefault,
+		MarginBottom: MarginDefault,
+		MarginLeft:   MarginDefault,
+		MarginHeader: MarginHeaderFooterDefault,
+		MarginFooter: MarginHeaderFooterDefault,
+		MarginGutter: 0,
+	}
 }

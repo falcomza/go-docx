@@ -180,7 +180,7 @@ func (u *Updater) insertChartAfterSource(newChartIndex int, sourceChartIndex int
 		return err
 	}
 	// Find the drawing that references this r:id in document.xml
-	tag := []byte(fmt.Sprintf("r:id=\"%s\"", sourceRelID))
+	tag := fmt.Appendf(nil, "r:id=\"%s\"", sourceRelID)
 	drawIdx := bytes.Index(raw, tag)
 	if drawIdx == -1 {
 		return fmt.Errorf("could not find drawing for source chart %d", sourceChartIndex)
@@ -296,7 +296,7 @@ func (u *Updater) generateChartDrawingXML(chartIndex int, relId string) ([]byte,
 	anchorId := ChartAnchorIDBase + uint32(chartIndex)*ChartIDIncrement
 	editId := ChartEditIDBase + uint32(chartIndex)*ChartIDIncrement
 
-	return []byte(fmt.Sprintf(template, anchorId, editId, docPrId, chartIndex, relId)), nil
+	return fmt.Appendf(nil, template, anchorId, editId, docPrId, chartIndex, relId), nil
 }
 
 // addChartRelationship appends a Relationship for the new chart to document.xml.rels and returns its Id

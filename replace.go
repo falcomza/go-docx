@@ -177,7 +177,8 @@ func (u *Updater) replaceTextInXML(raw []byte, old, new string, opts ReplaceOpti
 	replaced := 0
 
 	// Extract text runs (<w:t> elements) and replace within them
-	textPattern := regexp.MustCompile(`<w:t[^>]*>(.*?)</w:t>`)
+	// Use word boundary \b or explicit space/> to avoid matching <w:tabs>, <w:tbl>, <w:tc>, etc.
+	textPattern := regexp.MustCompile(`<w:t(?:\s[^>]*)?(>.*?</w:t>)`)
 
 	content = textPattern.ReplaceAllStringFunc(content, func(match string) string {
 		// Check if we've hit the max replacements
@@ -186,7 +187,8 @@ func (u *Updater) replaceTextInXML(raw []byte, old, new string, opts ReplaceOpti
 		}
 
 		// Extract the text content
-		textContentPattern := regexp.MustCompile(`<w:t[^>]*>(.*?)</w:t>`)
+		// Match the full element: <w:t> or <w:t xml:space="preserve">text</w:t>
+		textContentPattern := regexp.MustCompile(`<w:t(?:\s[^>]*)?>(.*)` + `</w:t>`)
 		matches := textContentPattern.FindStringSubmatch(match)
 		if len(matches) < 2 {
 			return match
@@ -252,7 +254,8 @@ func (u *Updater) replaceRegexInXML(raw []byte, pattern *regexp.Regexp, replacem
 	replaced := 0
 
 	// Extract text runs (<w:t> elements) and replace within them
-	textPattern := regexp.MustCompile(`<w:t[^>]*>(.*?)</w:t>`)
+	// Use word boundary or explicit space/> to avoid matching <w:tabs>, <w:tbl>, <w:tc>, etc.
+	textPattern := regexp.MustCompile(`<w:t(?:\s[^>]*)?(>.*?</w:t>)`)
 
 	content = textPattern.ReplaceAllStringFunc(content, func(match string) string {
 		// Check if we've hit the max replacements
@@ -261,7 +264,8 @@ func (u *Updater) replaceRegexInXML(raw []byte, pattern *regexp.Regexp, replacem
 		}
 
 		// Extract the text content
-		textContentPattern := regexp.MustCompile(`<w:t[^>]*>(.*?)</w:t>`)
+		// Match the full element: <w:t> or <w:t xml:space="preserve">text</w:t>
+		textContentPattern := regexp.MustCompile(`<w:t(?:\s[^>]*)?>(.*)` + `</w:t>`)
 		matches := textContentPattern.FindStringSubmatch(match)
 		if len(matches) < 2 {
 			return match

@@ -79,7 +79,7 @@ func validateDocxXMLStructure(t *testing.T, docxPath string) {
 			}
 
 			// 1. Check XML is valid
-			var doc interface{}
+			var doc any
 			if err := xml.Unmarshal(content, &doc); err != nil {
 				t.Errorf("❌ Invalid XML: %v", err)
 				t.Logf("First 500 chars: %s", string(content[:min(500, len(content))]))
@@ -159,11 +159,4 @@ func validateDocxXMLStructure(t *testing.T, docxPath string) {
 			}
 		})
 	}
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
