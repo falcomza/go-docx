@@ -141,10 +141,7 @@ func generateParagraphXML(opts ParagraphOptions) []byte {
 
 		if numID > 0 {
 			// Validate and constrain list level
-			level := max(opts.ListLevel, 0)
-			if level > 8 {
-				level = 8
-			}
+			level := min(max(opts.ListLevel, 0), 8)
 
 			buf.WriteString("<w:numPr>")
 			buf.WriteString(fmt.Sprintf(`<w:ilvl w:val="%d"/>`, level))
