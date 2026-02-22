@@ -251,6 +251,23 @@ func buildFixtureDocxTwoCharts(t *testing.T) []byte {
 	return docx.Bytes()
 }
 
+func buildFixtureDocxNoCharts(t *testing.T) []byte {
+	t.Helper()
+
+	docx := &bytes.Buffer{}
+	docxZip := zip.NewWriter(docx)
+
+	addZipEntry(t, docxZip, "[Content_Types].xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"></Types>`)
+	addZipEntry(t, docxZip, "word/document.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body></w:body></w:document>`)
+	addZipEntry(t, docxZip, "word/_rels/document.xml.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>`)
+
+	if err := docxZip.Close(); err != nil {
+		t.Fatalf("close docx zip: %v", err)
+	}
+
+	return docx.Bytes()
+}
+
 func buildFixtureWorkbook(t *testing.T) []byte {
 	t.Helper()
 
@@ -365,6 +382,93 @@ func readWorkbookEntry(t *testing.T, workbookRaw []byte, entryPath string) strin
 	}
 	t.Fatalf("workbook entry not found: %s", entryPath)
 	return ""
+}
+
+func TestGetChartCount(t *testing.T) {
+	tempDir := t.TempDir()
+	inputPath := filepath.Join(tempDir, "input.docx")
+	if err := os.WriteFile(inputPath, buildFixtureDocx(t), 0o644); err != nil {
+		t.Fatalf("write input fixture: %v", err)
+	}
+
+	u, err := godocx.New(inputPath)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer u.Cleanup()
+
+	count, err := u.GetChartCount()
+	if err != nil {
+		t.Fatalf("GetChartCount: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("expected 1 chart, got %d", count)
+	}
+}
+
+func TestGetChartCountTwoCharts(t *testing.T) {
+	tempDir := t.TempDir()
+	inputPath := filepath.Join(tempDir, "input.docx")
+	if err := os.WriteFile(inputPath, buildFixtureDocxTwoCharts(t), 0o644); err != nil {
+		t.Fatalf("write input fixture: %v", err)
+	}
+
+	u, err := godocx.New(inputPath)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer u.Cleanup()
+
+	count, err := u.GetChartCount()
+	if err != nil {
+		t.Fatalf("GetChartCount: %v", err)
+	}
+	if count != 2 {
+		t.Errorf("expected 2 charts, got %d", count)
+	}
+}
+
+func TestGetChartCountEmpty(t *testing.T) {
+	tempDir := t.TempDir()
+	inputPath := filepath.Join(tempDir, "input.docx")
+	if err := os.WriteFile(inputPath, buildFixtureDocxNoCharts(t), 0o644); err != nil {
+		t.Fatalf("write input fixture: %v", err)
+	}
+
+	u, err := godocx.New(inputPath)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer u.Cleanup()
+
+	count, err := u.GetChartCount()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("expected 0, got %d", count)
+	}
+}
+
+func TestGetChartCountWithTemplate(t *testing.T) {
+	templatePath := filepath.Join("templates", "docx_template.docx")
+	if _, err := os.Stat(templatePath); os.IsNotExist(err) {
+		t.Skip("Template file not found")
+	}
+
+	u, err := godocx.New(templatePath)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer u.Cleanup()
+
+	count, err := u.GetChartCount()
+	if err != nil {
+		t.Fatalf("GetChartCount: %v", err)
+	}
+	if count < 1 {
+		t.Errorf("expected at least 1 chart, got %d", count)
+	}
 }
 
 const chartRelsFixtureXML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>

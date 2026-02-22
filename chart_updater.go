@@ -55,6 +55,30 @@ func (u *Updater) TempDir() string {
 	return u.tempDir
 }
 
+// GetChartCount returns the number of charts embedded in the document.
+// Returns 0 if the document contains no charts.
+func (u *Updater) GetChartCount() (int, error) {
+	if u == nil {
+		return 0, errors.New("updater is nil")
+	}
+	chartsDir := filepath.Join(u.tempDir, "word", "charts")
+	entries, err := os.ReadDir(chartsDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, nil
+		}
+		return 0, fmt.Errorf("read charts dir: %w", err)
+	}
+	var count int
+	for _, e := range entries {
+		name := e.Name()
+		if !e.IsDir() && strings.HasPrefix(name, "chart") && strings.HasSuffix(name, ".xml") {
+			count++
+		}
+	}
+	return count, nil
+}
+
 // Cleanup removes temporary workspace.
 func (u *Updater) Cleanup() error {
 	if u == nil || u.tempDir == "" {

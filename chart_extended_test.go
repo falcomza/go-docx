@@ -462,6 +462,28 @@ func TestBoolToInt(t *testing.T) {
 	}
 }
 
+func TestGetChartCountNonChartFiles(t *testing.T) {
+	// Create a docx whose word/charts/ dir only has non-chart files
+	dir := t.TempDir()
+	chartsDir := filepath.Join(dir, "word", "charts")
+	if err := os.MkdirAll(chartsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Write a non-chart file to the directory
+	if err := os.WriteFile(filepath.Join(chartsDir, "colors1.xml"), []byte("<colors/>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	u := &Updater{tempDir: dir}
+	count, err := u.GetChartCount()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("expected 0, got %d", count)
+	}
+}
+
 // Helper functions
 
 func ptrFloat(f float64) *float64 {
