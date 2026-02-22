@@ -526,40 +526,6 @@ const chart2FixtureXML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?
   <c:externalData r:id="rId1"/>
 </c:chartSpace>`
 
-func TestGetChartData(t *testing.T) {
-	// Uses a programmatic fixture that always has a chart with known categories and series.
-	tempDir := t.TempDir()
-	inputPath := filepath.Join(tempDir, "input.docx")
-	if err := os.WriteFile(inputPath, buildFixtureDocx(t), 0o644); err != nil {
-		t.Fatalf("write input fixture: %v", err)
-	}
-
-	u, err := godocx.New(inputPath)
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	defer u.Cleanup()
-
-	data, err := u.GetChartData(1)
-	if err != nil {
-		t.Fatalf("GetChartData: %v", err)
-	}
-	if len(data.Categories) == 0 {
-		t.Error("expected at least one category")
-	}
-	if len(data.Series) == 0 {
-		t.Error("expected at least one series")
-	}
-	for i, s := range data.Series {
-		if s.Name == "" {
-			t.Errorf("series[%d] has empty name", i)
-		}
-		if len(s.Values) != len(data.Categories) {
-			t.Errorf("series[%d]: %d values for %d categories", i, len(s.Values), len(data.Categories))
-		}
-	}
-}
-
 func TestGetChartDataInvalidIndex(t *testing.T) {
 	// Uses a programmatic fixture rather than the template file.
 	tempDir := t.TempDir()
@@ -642,6 +608,20 @@ func TestGetChartDataRoundTrip(t *testing.T) {
 			t.Errorf("series[%d].Name: got %q want %q", i, data.Series[i].Name, s.Name)
 		}
 	}
+	for i, s := range wantSeries {
+		if i >= len(data.Series) {
+			break
+		}
+		if len(data.Series[i].Values) != len(s.Values) {
+			t.Errorf("series[%d] values len: got %d want %d", i, len(data.Series[i].Values), len(s.Values))
+			continue
+		}
+		for j, v := range s.Values {
+			if data.Series[i].Values[j] != v {
+				t.Errorf("series[%d].Values[%d]: got %v want %v", i, j, data.Series[i].Values[j], v)
+			}
+		}
+	}
 }
 
 func TestGetChartDataFromFixture(t *testing.T) {
@@ -685,26 +665,3 @@ func TestGetChartDataFromFixture(t *testing.T) {
 	}
 }
 
-func TestGetChartDataInvalidIndexFromFixture(t *testing.T) {
-	tempDir := t.TempDir()
-	inputPath := filepath.Join(tempDir, "input.docx")
-	if err := os.WriteFile(inputPath, buildFixtureDocx(t), 0o644); err != nil {
-		t.Fatalf("write input fixture: %v", err)
-	}
-
-	u, err := godocx.New(inputPath)
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	defer u.Cleanup()
-
-	_, err = u.GetChartData(0)
-	if err == nil {
-		t.Error("expected error for index 0")
-	}
-
-	_, err = u.GetChartData(999)
-	if err == nil {
-		t.Error("expected error for non-existent chart index 999")
-	}
-}

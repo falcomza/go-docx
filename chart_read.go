@@ -27,6 +27,10 @@ func (u *Updater) GetChartData(chartIndex int) (ChartData, error) {
 
 func parseChartDataFromXML(raw []byte) (ChartData, error) {
 	content := string(raw)
+	// Basic sanity check — a chart XML file must contain a chartSpace element
+	if !strings.Contains(content, "chartSpace") {
+		return ChartData{}, fmt.Errorf("content does not appear to be chart XML (missing chartSpace element)")
+	}
 	// detectNamespacePrefix returns "c:" or "" (already includes the colon)
 	ns := detectNamespacePrefix(content)
 	// tag builds a tag name like "c:title" or "title"
@@ -36,10 +40,13 @@ func parseChartDataFromXML(raw []byte) (ChartData, error) {
 
 	data := ChartData{}
 
+	// Compile the value tag regexp once for the entire parse; the pattern
+	// depends on the namespace prefix which is a runtime value.
+	vRe := regexp.MustCompile(`<` + regexp.QuoteMeta(tag("v")) + `(?:\s[^>]*)?>([^<]*)<`)
+
 	// Title: first <c:v> inside the <c:title> block
 	titleBlock := extractFirstBlock(content, "<"+tag("title")+">", "<"+tag("title")+" ", "</"+tag("title")+">")
 	if titleBlock != "" {
-		vRe := vTagRegexp(tag("v"))
 		if m := vRe.FindStringSubmatch(titleBlock); m != nil {
 			data.ChartTitle = strings.TrimSpace(m[1])
 		}
@@ -47,10 +54,10 @@ func parseChartDataFromXML(raw []byte) (ChartData, error) {
 
 	// Series blocks
 	serBlocks := extractBlocks(content, "<"+tag("ser")+">", "<"+tag("ser")+" ", "</"+tag("ser")+">")
-	data.Categories = extractCategoriesFromSer(serBlocks, tag)
+	data.Categories = extractCategoriesFromSer(serBlocks, tag, vRe)
 	for _, block := range serBlocks {
-		name := extractSeriesName(block, tag)
-		values := extractSeriesValues(block, tag, len(data.Categories))
+		name := extractSeriesName(block, tag, vRe)
+		values := extractSeriesValues(block, tag, len(data.Categories), vRe)
 		data.Series = append(data.Series, SeriesData{Name: name, Values: values})
 	}
 
@@ -99,28 +106,20 @@ func extractBlocks(content, openTagExact, openTagAttr, closeTag string) []string
 	}
 }
 
-// vTagRegexp builds a regexp that matches exactly the value tag <c:v> or <v>
-// but not longer tag names like <c:val>. It requires either '>' or whitespace
-// immediately after the tag name.
-func vTagRegexp(tagName string) *regexp.Regexp {
-	return regexp.MustCompile(`<` + regexp.QuoteMeta(tagName) + `(?:\s[^>]*)?>([^<]*)<`)
-}
-
-func extractSeriesName(block string, tag func(string) string) string {
+func extractSeriesName(block string, tag func(string) string, vRe *regexp.Regexp) string {
 	txClose := "</" + tag("tx") + ">"
 	txEnd := strings.Index(block, txClose)
 	if txEnd < 0 {
 		return ""
 	}
 	txBlock := block[:txEnd]
-	vRe := vTagRegexp(tag("v"))
 	if m := vRe.FindStringSubmatch(txBlock); m != nil {
 		return strings.TrimSpace(m[1])
 	}
 	return ""
 }
 
-func extractCategoriesFromSer(serBlocks []string, tag func(string) string) []string {
+func extractCategoriesFromSer(serBlocks []string, tag func(string) string, vRe *regexp.Regexp) []string {
 	if len(serBlocks) == 0 {
 		return nil
 	}
@@ -132,7 +131,6 @@ func extractCategoriesFromSer(serBlocks []string, tag func(string) string) []str
 		return nil
 	}
 	catBlock := serBlocks[0][catStart : catEnd+len(catClose)]
-	vRe := vTagRegexp(tag("v"))
 	matches := vRe.FindAllStringSubmatch(catBlock, -1)
 	cats := make([]string, 0, len(matches))
 	for _, m := range matches {
@@ -141,7 +139,7 @@ func extractCategoriesFromSer(serBlocks []string, tag func(string) string) []str
 	return cats
 }
 
-func extractSeriesValues(block string, tag func(string) string, count int) []float64 {
+func extractSeriesValues(block string, tag func(string) string, count int, vRe *regexp.Regexp) []float64 {
 	valOpen := "<" + tag("val") + ">"
 	valClose := "</" + tag("val") + ">"
 	valStart := strings.Index(block, valOpen)
@@ -150,7 +148,6 @@ func extractSeriesValues(block string, tag func(string) string, count int) []flo
 		return make([]float64, count)
 	}
 	valBlock := block[valStart : valEnd+len(valClose)]
-	vRe := vTagRegexp(tag("v"))
 	matches := vRe.FindAllStringSubmatch(valBlock, -1)
 	values := make([]float64, 0, len(matches))
 	for _, m := range matches {
