@@ -69,21 +69,24 @@ func main() {
     u.UpdateChart(1, chartData)
 
     // Add a table with caption
-    table := updater.TableData{
-        Headers: []string{"Product", "Sales", "Growth"},
+    u.InsertTable(updater.TableOptions{
+        Columns: []updater.ColumnDefinition{
+            {Title: "Product"},
+            {Title: "Sales"},
+            {Title: "Growth"},
+        },
         Rows: [][]string{
             {"Product A", "$1.2M", "+15%"},
             {"Product B", "$980K", "+8%"},
         },
-    }
-    u.InsertTable(table, updater.TableOptions{
-        Style:    updater.TableStyleGridTable4Accent1,
-        Position: updater.PositionEnd,
+        TableStyle: updater.TableStyleGridAccent1,
+        Position:   updater.PositionEnd,
+        HeaderBold: true,
     })
     u.AddCaption(updater.CaptionOptions{
-        Type:       updater.CaptionTypeTable,
-        Label:      "Table",
-        Position:   updater.PositionEnd,
+        Type:     updater.CaptionTypeTable,
+        Label:    "Table",
+        Position: updater.PositionEnd,
     })
 
     // Save result
@@ -122,18 +125,14 @@ Create charts from scratch:
 u, _ := updater.New("document.docx")
 defer u.Cleanup()
 
-chartOptions := updater.ChartInsertOptions{
+chartOptions := updater.ChartOptions{
     Title:      "Quarterly Revenue",
-    ChartType:  updater.ChartTypeColumn,
+    ChartKind:  updater.ChartKindColumn,
     Position:   updater.PositionEnd,
-    Width:      6.0,  // inches
-    Height:     4.0,  // inches
-    Data: updater.ChartData{
-        Categories: []string{"Q1", "Q2", "Q3", "Q4"},
-        Series: []updater.SeriesData{
-            {Name: "2025", Values: []float64{100, 120, 110, 130}},
-            {Name: "2026", Values: []float64{110, 130, 125, 145}},
-        },
+    Categories: []string{"Q1", "Q2", "Q3", "Q4"},
+    Series: []updater.SeriesOptions{
+        {Name: "2025", Values: []float64{100, 120, 110, 130}},
+        {Name: "2026", Values: []float64{110, 130, 125, 145}},
     },
 }
 
@@ -149,24 +148,24 @@ Insert styled tables with comprehensive formatting:
 u, _ := updater.New("document.docx")
 defer u.Cleanup()
 
-table := updater.TableData{
-    Headers: []string{"Product", "Q1", "Q2", "Q3", "Q4"},
+u.InsertTable(updater.TableOptions{
+    Columns: []updater.ColumnDefinition{
+        {Title: "Product"},
+        {Title: "Q1"},
+        {Title: "Q2"},
+        {Title: "Q3"},
+        {Title: "Q4"},
+    },
     Rows: [][]string{
         {"Product A", "$120K", "$135K", "$128K", "$150K"},
         {"Product B", "$98K", "$105K", "$112K", "$118K"},
         {"Product C", "$85K", "$92K", "$88K", "$95K"},
     },
-}
-
-options := updater.TableOptions{
-    Style:          updater.TableStyleGridTable4Accent1,
-    Position:       updater.PositionEnd,
-    HeaderBold:     true,
-    Border:         true,
-    RowHeights:     []int{300, 280, 280, 280}, // In twips (1/1440 inch)
-}
-
-u.InsertTable(table, options)
+    TableStyle: updater.TableStyleGridAccent1,
+    Position:   updater.PositionEnd,
+    HeaderBold: true,
+    RowHeight:  280, // In twips (1/1440 inch)
+})
 u.Save("with_table.docx")
 ```
 
@@ -386,7 +385,7 @@ u, _ := updater.New("document.docx")
 defer u.Cleanup()
 
 // Insert table
-u.InsertTable(tableData, tableOptions)
+u.InsertTable(tableOptions)
 
 // Add caption below the table
 u.AddCaption(updater.CaptionOptions{
@@ -418,6 +417,7 @@ Create multiple charts for bulk report generation:
 u, _ := updater.New("template.docx")
 defer u.Cleanup()
 
+// salesData is [][]updater.SeriesOptions, regions is [][]string
 // Insert three charts with different data
 for i := 0; i < 3; i++ {
     chartOptions := updater.ChartOptions{
@@ -425,7 +425,7 @@ for i := 0; i < 3; i++ {
         ChartKind:  updater.ChartKindColumn,
         Title:      fmt.Sprintf("Regional Report %d", i+1),
         Categories: regions[i],
-        Series:     salesData[i],
+        Series:     salesData[i], // salesData[i] is []updater.SeriesOptions
         ShowLegend: true,
     }
     u.InsertChart(chartOptions)
@@ -719,7 +719,7 @@ u.Save("with_properties.docx")
 - `InsertChart(options ChartOptions)` - Create new chart from scratch
 
 ### Table Operations
-- `InsertTable(options TableOptions)` - Insert formatted table with custom styling
+- `InsertTable(options TableOptions)` - Insert formatted table with custom styling (columns and rows are fields inside `TableOptions`)
 
 ### Paragraph Operations
 - `InsertParagraph(options ParagraphOptions)` - Insert styled paragraph
@@ -818,16 +818,16 @@ Run the comprehensive test suite:
 
 ```bash
 # Run all tests
-go test ./tests/...
+go test ./...
 
 # Run specific test
-go test ./tests/ -run TestInsertTable
+go test -run TestInsertTable ./...
 
 # Run with verbose output
-go test -v ./tests/...
+go test -v ./...
 
 # Generate coverage report
-go test -cover ./tests/...
+go test -cover ./...
 ```
 
 ## Requirements
@@ -846,15 +846,14 @@ DOCX files are ZIP archives containing XML files. This library:
 
 ## Limitations
 
-- Currently supports bar, line, and scatter chart types
+- Supports bar, column, line, pie, area, and scatter chart types
 - Table styles are limited to predefined Word styles
 - Performance depends on document size and complexity
 
 ## Roadmap
 
-- [ ] Add more chart types (pie, area, combo charts)
 - [x] Image insertion support with proportional sizing
-- [ ] Header/footer manipulation
+- [x] Header/footer manipulation
 - [ ] Style customization API
 - [ ] Performance optimizations for large documents
 

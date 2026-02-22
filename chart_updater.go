@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-// Updater updates chart caches and embedded workbook data inside a DOCX file.
+// Updater manages a DOCX document for programmatic reading and writing.
 type Updater struct {
 	originalPath string
 	tempDir      string
@@ -18,7 +18,7 @@ type Updater struct {
 	numberedListNumID int
 }
 
-// New prepares a working copy of a DOCX for chart updates.
+// New opens a DOCX file and prepares it for editing.
 func New(docxPath string) (*Updater, error) {
 	if docxPath == "" {
 		return nil, errors.New("docx path is required")
