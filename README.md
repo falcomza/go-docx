@@ -1,6 +1,6 @@
 # DOCX Updater
 
-[![Go Version](https://img.shields.io/badge/Go-1.23+-00ADD8?style=flat&logo=go)](https://go.dev/)
+[![Go Version](https://img.shields.io/badge/Go-1.26+-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 A powerful Go library for programmatically manipulating Microsoft Word (DOCX) documents. Update charts, insert tables, add paragraphs, generate captions, and more—all with a clean, idiomatic Go API.
@@ -832,7 +832,7 @@ go test -cover ./tests/...
 
 ## Requirements
 
-- Go 1.23 or later
+- Go 1.26 or later
 - No external dependencies (uses only standard library)
 
 ## How It Works
