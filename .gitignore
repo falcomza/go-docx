@@ -32,4 +32,5 @@ test_simple_copy
 !README.md
 !templates/docx_template.docx
 !docs/*.md
+!docs/plans/*.md
 *.xml
