@@ -71,6 +71,10 @@ func main() {
 
 	// Process each subsystem by inserting a new chart
 	for _, subsystem := range subsystems {
+		seriesOpts := make([]updater.SeriesOptions, len(subsystem.Data.Series))
+		for i, s := range subsystem.Data.Series {
+			seriesOpts[i] = updater.SeriesOptions{Name: s.Name, Values: s.Values}
+		}
 		opts := updater.ChartOptions{
 			Position:          updater.PositionEnd,
 			ChartKind:         updater.ChartKindColumn,
@@ -78,7 +82,7 @@ func main() {
 			CategoryAxisTitle: subsystem.Data.CategoryAxisTitle,
 			ValueAxisTitle:    subsystem.Data.ValueAxisTitle,
 			Categories:        subsystem.Data.Categories,
-			Series:            subsystem.Data.Series,
+			Series:            seriesOpts,
 			ShowLegend:        true,
 		}
 
