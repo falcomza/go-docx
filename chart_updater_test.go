@@ -522,3 +522,188 @@ const chart2FixtureXML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?
   </c:chart>
   <c:externalData r:id="rId1"/>
 </c:chartSpace>`
+
+func TestGetChartData(t *testing.T) {
+	templatePath := filepath.Join("templates", "docx_template.docx")
+	if _, err := os.Stat(templatePath); os.IsNotExist(err) {
+		t.Skip("Template file not found")
+	}
+
+	u, err := godocx.New(templatePath)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer u.Cleanup()
+
+	count, err := u.GetChartCount()
+	if err != nil {
+		t.Fatalf("GetChartCount: %v", err)
+	}
+	if count == 0 {
+		t.Skip("Template has no charts")
+	}
+
+	data, err := u.GetChartData(1)
+	if err != nil {
+		t.Fatalf("GetChartData: %v", err)
+	}
+	if len(data.Categories) == 0 {
+		t.Error("expected at least one category")
+	}
+	if len(data.Series) == 0 {
+		t.Error("expected at least one series")
+	}
+	for i, s := range data.Series {
+		if s.Name == "" {
+			t.Errorf("series[%d] has empty name", i)
+		}
+		if len(s.Values) != len(data.Categories) {
+			t.Errorf("series[%d]: %d values for %d categories", i, len(s.Values), len(data.Categories))
+		}
+	}
+}
+
+func TestGetChartDataInvalidIndex(t *testing.T) {
+	templatePath := filepath.Join("templates", "docx_template.docx")
+	if _, err := os.Stat(templatePath); os.IsNotExist(err) {
+		t.Skip("Template file not found")
+	}
+
+	u, err := godocx.New(templatePath)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer u.Cleanup()
+
+	_, err = u.GetChartData(0)
+	if err == nil {
+		t.Error("expected error for index 0")
+	}
+	_, err = u.GetChartData(999)
+	if err == nil {
+		t.Error("expected error for non-existent chart")
+	}
+}
+
+func TestGetChartDataRoundTrip(t *testing.T) {
+	// InsertChart then GetChartData should return the same categories and series names
+	templatePath := filepath.Join("templates", "docx_template.docx")
+	if _, err := os.Stat(templatePath); os.IsNotExist(err) {
+		t.Skip("Template file not found")
+	}
+
+	u, err := godocx.New(templatePath)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer u.Cleanup()
+
+	wantCategories := []string{"Jan", "Feb", "Mar"}
+	wantSeries := []godocx.SeriesOptions{
+		{Name: "Alpha", Values: []float64{10, 20, 30}},
+		{Name: "Beta", Values: []float64{40, 50, 60}},
+	}
+
+	err = u.InsertChart(godocx.ChartOptions{
+		Categories: wantCategories,
+		Series:     wantSeries,
+		Position:   godocx.PositionEnd,
+	})
+	if err != nil {
+		t.Fatalf("InsertChart: %v", err)
+	}
+
+	count, _ := u.GetChartCount()
+	data, err := u.GetChartData(count) // newest chart is last
+	if err != nil {
+		t.Fatalf("GetChartData: %v", err)
+	}
+
+	if len(data.Categories) != len(wantCategories) {
+		t.Errorf("categories: got %d want %d", len(data.Categories), len(wantCategories))
+	}
+	for i, cat := range wantCategories {
+		if i >= len(data.Categories) {
+			break
+		}
+		if data.Categories[i] != cat {
+			t.Errorf("category[%d]: got %q want %q", i, data.Categories[i], cat)
+		}
+	}
+	if len(data.Series) != len(wantSeries) {
+		t.Errorf("series count: got %d want %d", len(data.Series), len(wantSeries))
+	}
+	for i, s := range wantSeries {
+		if i >= len(data.Series) {
+			break
+		}
+		if data.Series[i].Name != s.Name {
+			t.Errorf("series[%d].Name: got %q want %q", i, data.Series[i].Name, s.Name)
+		}
+	}
+}
+
+func TestGetChartDataFromFixture(t *testing.T) {
+	tempDir := t.TempDir()
+	inputPath := filepath.Join(tempDir, "input.docx")
+	if err := os.WriteFile(inputPath, buildFixtureDocx(t), 0o644); err != nil {
+		t.Fatalf("write input fixture: %v", err)
+	}
+
+	u, err := godocx.New(inputPath)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer u.Cleanup()
+
+	data, err := u.GetChartData(1)
+	if err != nil {
+		t.Fatalf("GetChartData: %v", err)
+	}
+
+	if len(data.Categories) != 1 {
+		t.Errorf("expected 1 category, got %d", len(data.Categories))
+	}
+	if len(data.Categories) > 0 && data.Categories[0] != "Old 1" {
+		t.Errorf("category[0]: got %q want %q", data.Categories[0], "Old 1")
+	}
+	if len(data.Series) != 2 {
+		t.Errorf("expected 2 series, got %d", len(data.Series))
+	}
+	if len(data.Series) > 0 && data.Series[0].Name != "Critical" {
+		t.Errorf("series[0].Name: got %q want %q", data.Series[0].Name, "Critical")
+	}
+	if len(data.Series) > 1 && data.Series[1].Name != "Non-critical" {
+		t.Errorf("series[1].Name: got %q want %q", data.Series[1].Name, "Non-critical")
+	}
+	if len(data.Series) > 0 && len(data.Series[0].Values) > 0 && data.Series[0].Values[0] != 1 {
+		t.Errorf("series[0].Values[0]: got %v want 1", data.Series[0].Values[0])
+	}
+	if len(data.Series) > 1 && len(data.Series[1].Values) > 0 && data.Series[1].Values[0] != 2 {
+		t.Errorf("series[1].Values[0]: got %v want 2", data.Series[1].Values[0])
+	}
+}
+
+func TestGetChartDataInvalidIndexFromFixture(t *testing.T) {
+	tempDir := t.TempDir()
+	inputPath := filepath.Join(tempDir, "input.docx")
+	if err := os.WriteFile(inputPath, buildFixtureDocx(t), 0o644); err != nil {
+		t.Fatalf("write input fixture: %v", err)
+	}
+
+	u, err := godocx.New(inputPath)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer u.Cleanup()
+
+	_, err = u.GetChartData(0)
+	if err == nil {
+		t.Error("expected error for index 0")
+	}
+
+	_, err = u.GetChartData(999)
+	if err == nil {
+		t.Error("expected error for non-existent chart index 999")
+	}
+}

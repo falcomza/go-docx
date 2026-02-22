@@ -39,4 +39,5 @@
 //
 // Use [Updater.UpdateChart] to replace data in an existing chart template.
 // Use [Updater.InsertChart] to create a new chart from scratch.
+// Use [Updater.GetChartData] to read current chart categories and series.
 package godocx
