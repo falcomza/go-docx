@@ -18,6 +18,22 @@ type ChartSpace struct {
 	} `xml:"externalData"`
 }
 
+func parseScatterXValues(categories []string) ([]float64, error) {
+	values := make([]float64, len(categories))
+	for i, cat := range categories {
+		clean := strings.TrimSpace(cat)
+		if clean == "" {
+			return nil, fmt.Errorf("scatter chart categories must be numeric")
+		}
+		val, err := strconv.ParseFloat(clean, 64)
+		if err != nil {
+			return nil, fmt.Errorf("scatter chart categories must be numeric: %w", err)
+		}
+		values[i] = val
+	}
+	return values, nil
+}
+
 // Chart represents the chart element containing plot area.
 type Chart struct {
 	Title    *ChartTitle `xml:"title,omitempty"`
@@ -336,6 +352,14 @@ func updateSeriesSection(chartSection string, data ChartData, nsPrefix, chartTyp
 	if len(serTags) == 0 {
 		return "", fmt.Errorf("no series found in chart")
 	}
+	var scatterXValues []float64
+	if chartType == "scatterChart" {
+		parsed, err := parseScatterXValues(data.Categories)
+		if err != nil {
+			return "", err
+		}
+		scatterXValues = parsed
+	}
 
 	// Build new series section
 	var buf bytes.Buffer
@@ -343,7 +367,10 @@ func updateSeriesSection(chartSection string, data ChartData, nsPrefix, chartTyp
 
 	// Write series from data
 	for i, series := range data.Series {
-		serXML := buildSeriesXML(series, data.Categories, i, nsPrefix, chartType)
+		serXML, err := buildSeriesXML(series, data.Categories, scatterXValues, i, nsPrefix, chartType)
+		if err != nil {
+			return "", err
+		}
 		buf.WriteString(serXML)
 	}
 
@@ -372,7 +399,7 @@ func findAllSeriesTags(content, nsPrefix string) []int {
 }
 
 // buildSeriesXML constructs XML for a single series.
-func buildSeriesXML(series SeriesData, categories []string, idx int, nsPrefix, chartType string) string {
+func buildSeriesXML(series SeriesData, categories []string, scatterXValues []float64, idx int, nsPrefix, chartType string) (string, error) {
 	var buf bytes.Buffer
 
 	buf.WriteString("<" + nsPrefix + "ser>")
@@ -398,6 +425,22 @@ func buildSeriesXML(series SeriesData, categories []string, idx int, nsPrefix, c
 		buf.WriteString("</" + nsPrefix + "strCache>")
 		buf.WriteString("</" + nsPrefix + "strRef>")
 		buf.WriteString("</" + nsPrefix + "cat>")
+	} else {
+		if len(scatterXValues) == 0 {
+			return "", fmt.Errorf("scatter chart categories must be numeric")
+		}
+		buf.WriteString("<" + nsPrefix + "xVal>")
+		buf.WriteString("<" + nsPrefix + "numRef>")
+		buf.WriteString("<" + nsPrefix + "numCache>")
+		buf.WriteString("<" + nsPrefix + "ptCount val=\"" + strconv.Itoa(len(scatterXValues)) + "\"/>")
+		for i, val := range scatterXValues {
+			buf.WriteString("<" + nsPrefix + "pt idx=\"" + strconv.Itoa(i) + "\">")
+			buf.WriteString("<" + nsPrefix + "v>" + formatFloat(val) + "</" + nsPrefix + "v>")
+			buf.WriteString("</" + nsPrefix + "pt>")
+		}
+		buf.WriteString("</" + nsPrefix + "numCache>")
+		buf.WriteString("</" + nsPrefix + "numRef>")
+		buf.WriteString("</" + nsPrefix + "xVal>")
 	}
 
 	// Values
@@ -420,8 +463,7 @@ func buildSeriesXML(series SeriesData, categories []string, idx int, nsPrefix, c
 	buf.WriteString("</" + nsPrefix + valTag + ">")
 
 	buf.WriteString("</" + nsPrefix + "ser>")
-
-	return buf.String()
+	return buf.String(), nil
 }
 
 // copyNonSeriesElements copies elements like axId from the original chart.

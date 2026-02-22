@@ -292,6 +292,11 @@ func generateTableXML(opts TableOptions) []byte {
 	} else {
 		buf.WriteString(fmt.Sprintf(`<w:tblW w:w="%d" w:type="%s"/>`, opts.TableWidth, opts.TableWidthType))
 	}
+	if opts.AutoFit {
+		buf.WriteString(`<w:tblLayout w:type="autofit"/>`)
+	} else {
+		buf.WriteString(`<w:tblLayout w:type="fixed"/>`)
+	}
 
 	// Table alignment
 	buf.WriteString(fmt.Sprintf(`<w:jc w:val="%s"/>`, opts.TableAlignment))

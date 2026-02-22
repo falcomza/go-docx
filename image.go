@@ -362,94 +362,29 @@ func (u *Updater) copyImageToMedia(srcPath, destFileName string) error {
 
 // insertImageAtPosition inserts the image XML at the specified position in document.xml
 func insertImageAtPosition(raw []byte, imageXML []byte, opts ImageOptions) ([]byte, error) {
-	bodyStart := []byte("<w:body>")
-	bodyEnd := []byte("</w:body>")
-
-	startIdx := bytes.Index(raw, bodyStart)
-	endIdx := bytes.LastIndex(raw, bodyEnd)
-	if startIdx == -1 || endIdx == -1 {
-		return nil, fmt.Errorf("invalid document.xml: missing <w:body>")
-	}
-	startIdx += len(bodyStart)
 
 	switch opts.Position {
 	case PositionBeginning:
-		// Insert at the beginning of body
-		result := make([]byte, 0, len(raw)+len(imageXML))
-		result = append(result, raw[:startIdx]...)
-		result = append(result, imageXML...)
-		result = append(result, raw[startIdx:]...)
-		return result, nil
+		return insertAtBodyStart(raw, imageXML)
 
 	case PositionEnd:
-		// Insert at the end of body (before </w:body>)
-		result := make([]byte, 0, len(raw)+len(imageXML))
-		result = append(result, raw[:endIdx]...)
-		result = append(result, imageXML...)
-		result = append(result, raw[endIdx:]...)
-		return result, nil
+		return insertAtBodyEnd(raw, imageXML)
 
 	case PositionAfterText:
 		if opts.Anchor == "" {
 			return nil, fmt.Errorf("anchor text required for PositionAfterText")
 		}
-		// Find the anchor text and insert after its paragraph
-		return insertAfterAnchor(raw, imageXML, opts.Anchor)
+		return insertAfterText(raw, imageXML, opts.Anchor)
 
 	case PositionBeforeText:
 		if opts.Anchor == "" {
 			return nil, fmt.Errorf("anchor text required for PositionBeforeText")
 		}
-		// Find the anchor text and insert before its paragraph
-		return insertBeforeAnchor(raw, imageXML, opts.Anchor)
+		return insertBeforeText(raw, imageXML, opts.Anchor)
 
 	default:
 		return nil, fmt.Errorf("invalid position: %d", opts.Position)
 	}
 }
 
-// insertAfterAnchor inserts the image XML after the paragraph containing the anchor text
-func insertAfterAnchor(raw []byte, imageXML []byte, anchor string) ([]byte, error) {
-	anchorBytes := []byte(anchor)
-	pos := bytes.Index(raw, anchorBytes)
-	if pos == -1 {
-		return nil, fmt.Errorf("anchor text not found: %s", anchor)
-	}
-
-	// Find the end of the paragraph containing the anchor
-	paraEnd := []byte("</w:p>")
-	endPos := bytes.Index(raw[pos:], paraEnd)
-	if endPos == -1 {
-		return nil, fmt.Errorf("paragraph end not found after anchor text")
-	}
-	insertPos := pos + endPos + len(paraEnd)
-
-	result := make([]byte, 0, len(raw)+len(imageXML))
-	result = append(result, raw[:insertPos]...)
-	result = append(result, imageXML...)
-	result = append(result, raw[insertPos:]...)
-	return result, nil
-}
-
-// insertBeforeAnchor inserts the image XML before the paragraph containing the anchor text
-func insertBeforeAnchor(raw []byte, imageXML []byte, anchor string) ([]byte, error) {
-	anchorBytes := []byte(anchor)
-	before, _, ok := bytes.Cut(raw, anchorBytes)
-	if !ok {
-		return nil, fmt.Errorf("anchor text not found: %s", anchor)
-	}
-
-	// Find the start of the paragraph containing the anchor
-	paraStart := []byte("<w:p>")
-	// Search backwards from anchor position
-	startPos := bytes.LastIndex(before, paraStart)
-	if startPos == -1 {
-		return nil, fmt.Errorf("paragraph start not found before anchor text")
-	}
-
-	result := make([]byte, 0, len(raw)+len(imageXML))
-	result = append(result, raw[:startPos]...)
-	result = append(result, imageXML...)
-	result = append(result, raw[startPos:]...)
-	return result, nil
-}
+// insertAfterAnchor and insertBeforeAnchor removed in favor of paragraph-aware helpers.

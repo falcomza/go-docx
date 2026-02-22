@@ -203,7 +203,8 @@ func (u *Updater) replaceTextInXML(raw []byte, old, new string, opts ReplaceOpti
 			return match
 		}
 
-		text := matches[1]
+		rawText := matches[1]
+		text := xmlUnescape(rawText)
 		var replacedText string
 
 		if opts.WholeWord {
@@ -242,7 +243,7 @@ func (u *Updater) replaceTextInXML(raw []byte, old, new string, opts ReplaceOpti
 		}
 
 		if replacedText != text {
-			return strings.Replace(match, text, xmlEscape(replacedText), 1)
+			return strings.Replace(match, rawText, xmlEscape(replacedText), 1)
 		}
 		return match
 	})
@@ -269,8 +270,8 @@ func (u *Updater) replaceRegexInXML(raw []byte, pattern *regexp.Regexp, replacem
 		if len(matches) < 2 {
 			return match
 		}
-
-		text := matches[1]
+		rawText := matches[1]
+		text := xmlUnescape(rawText)
 		replacedText := pattern.ReplaceAllStringFunc(text, func(m string) string {
 			if opts.MaxReplacements > 0 && *count >= opts.MaxReplacements {
 				return m
@@ -281,7 +282,7 @@ func (u *Updater) replaceRegexInXML(raw []byte, pattern *regexp.Regexp, replacem
 		})
 
 		if replacedText != text {
-			return strings.Replace(match, text, xmlEscape(replacedText), 1)
+			return strings.Replace(match, rawText, xmlEscape(replacedText), 1)
 		}
 		return match
 	})

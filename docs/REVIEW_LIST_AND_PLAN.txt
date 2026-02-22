@@ -1,0 +1,14 @@
+Review improvements list
+- Add scatter chart xVal output and validate numeric categories for scatter series.
+- Preserve section properties placement for image/break insertions at document end.
+- Use paragraph-aware anchor matching for image/break insertions.
+- Emit w:titlePg and w:evenAndOddHeaders in section properties when requested.
+- Emit w:tblLayout based on TableOptions.AutoFit.
+- Unescape XML entities before matching/replacing in text runs; re-escape on write.
+
+Implementation plan
+1) Update chart XML series generation to emit xVal for scatter charts and validate numeric categories.
+2) Route PositionEnd image/break insertions through insertAtBodyEnd and use paragraph-aware anchor insertion helpers.
+3) Add section property flags for DifferentFirst and DifferentOddEven in header/footer updates.
+4) Emit w:tblLayout in table XML based on AutoFit.
+5) Update replace helpers to unescape XML entities before matching/replacing and re-escape when writing.

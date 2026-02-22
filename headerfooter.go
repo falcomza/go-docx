@@ -462,6 +462,12 @@ func (u *Updater) addHeaderFooterToSectPr(sectPr string, hdrFtrType any, hdrFtr 
 		// Insert before </w:sectPr>
 		sectPr = strings.Replace(sectPr, "</w:sectPr>", refElement+"</w:sectPr>", 1)
 	}
+	if differentFirst && !strings.Contains(sectPr, "<w:titlePg") {
+		sectPr = strings.Replace(sectPr, "</w:sectPr>", "<w:titlePg/></w:sectPr>", 1)
+	}
+	if differentOddEven && !strings.Contains(sectPr, "<w:evenAndOddHeaders") {
+		sectPr = strings.Replace(sectPr, "</w:sectPr>", "<w:evenAndOddHeaders/></w:sectPr>", 1)
+	}
 
 	return sectPr
 }
@@ -474,6 +480,9 @@ func (u *Updater) createSectPrWithHeaderFooter(hdrFtrType any, hdrFtr string, re
 
 	if differentFirst {
 		buf.WriteString("<w:titlePg/>")
+	}
+	if differentOddEven {
+		buf.WriteString("<w:evenAndOddHeaders/>")
 	}
 
 	// Determine reference type

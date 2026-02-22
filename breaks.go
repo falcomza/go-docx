@@ -141,46 +141,25 @@ func validateSectionBreakType(breakType SectionBreakType) error {
 
 // insertBreakAtPosition inserts a break (page or section) at the specified position
 func insertBreakAtPosition(raw []byte, breakXML []byte, opts BreakOptions) ([]byte, error) {
-	bodyStart := []byte("<w:body>")
-	bodyEnd := []byte("</w:body>")
-
-	startIdx := bytes.Index(raw, bodyStart)
-	endIdx := bytes.LastIndex(raw, bodyEnd)
-	if startIdx == -1 || endIdx == -1 {
-		return nil, fmt.Errorf("invalid document.xml: missing <w:body>")
-	}
-	startIdx += len(bodyStart)
 
 	switch opts.Position {
 	case PositionBeginning:
-		// Insert at the beginning of body
-		result := make([]byte, 0, len(raw)+len(breakXML))
-		result = append(result, raw[:startIdx]...)
-		result = append(result, breakXML...)
-		result = append(result, raw[startIdx:]...)
-		return result, nil
+		return insertAtBodyStart(raw, breakXML)
 
 	case PositionEnd:
-		// Insert at the end of body (before </w:body>)
-		result := make([]byte, 0, len(raw)+len(breakXML))
-		result = append(result, raw[:endIdx]...)
-		result = append(result, breakXML...)
-		result = append(result, raw[endIdx:]...)
-		return result, nil
+		return insertAtBodyEnd(raw, breakXML)
 
 	case PositionAfterText:
 		if opts.Anchor == "" {
 			return nil, fmt.Errorf("anchor text required for PositionAfterText")
 		}
-		// Find the anchor text and insert after its paragraph
-		return insertBreakAfterAnchor(raw, breakXML, opts.Anchor)
+		return insertAfterText(raw, breakXML, opts.Anchor)
 
 	case PositionBeforeText:
 		if opts.Anchor == "" {
 			return nil, fmt.Errorf("anchor text required for PositionBeforeText")
 		}
-		// Find the anchor text and insert before its paragraph
-		return insertBreakBeforeAnchor(raw, breakXML, opts.Anchor)
+		return insertBeforeText(raw, breakXML, opts.Anchor)
 
 	default:
 		return nil, fmt.Errorf("invalid position: %d", opts.Position)
