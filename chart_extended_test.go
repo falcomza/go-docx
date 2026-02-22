@@ -65,10 +65,8 @@ func TestInsertChartExtended(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create a temporary test file
-			tempDir := t.TempDir()
-			templatePath := filepath.Join("..", "templates", "template.docx")
-			outputPath := filepath.Join(tempDir, "test_output.docx")
+			templatePath := filepath.Join("templates", "docx_template.docx")
+			outputPath := filepath.Join("outputs", "chart_extended_"+tt.name+".docx")
 
 			// Check if template exists
 			if _, err := os.Stat(templatePath); os.IsNotExist(err) {
