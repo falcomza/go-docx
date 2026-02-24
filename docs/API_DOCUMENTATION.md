@@ -51,6 +51,18 @@ The DOCX Chart Updater is a Go library for programmatically manipulating Microso
 | **Headers/Footers** | `SetHeader()`, `SetFooter()` |
 | **Properties** | `SetCoreProperties()`, `SetAppProperties()`, `SetCustomProperties()`, `GetCoreProperties()` |
 | **Bookmarks** | `CreateBookmark()`, `CreateBookmarkWithText()` |
+| **Track Changes** | `InsertTrackedText()`, `DeleteTrackedText()` |
+| **Deletion** | `DeleteParagraphs()`, `DeleteTable()`, `DeleteImage()`, `DeleteChart()` |
+| **Table Update** | `UpdateTableCell()` |
+| **Table Merge** | `MergeTableCellsHorizontal()`, `MergeTableCellsVertical()` |
+| **Count** | `GetChartCount()`, `GetTableCount()`, `GetParagraphCount()`, `GetImageCount()` |
+| **Chart Reading** | `GetChartData()` |
+| **TOC** | `InsertTOC()`, `UpdateTOC()`, `GetTOCEntries()` |
+| **Footnotes/Endnotes** | `InsertFootnote()`, `InsertEndnote()` |
+| **Comments** | `InsertComment()`, `GetComments()` |
+| **Styles** | `AddStyle()`, `AddStyles()` |
+| **Page Numbers** | `SetPageNumber()` |
+| **Watermarks** | `SetTextWatermark()` |
 
 ### Key Design Principles
 
@@ -734,6 +746,397 @@ updater.CreateBookmarkWithText("important-note", "Critical Information", godocx.
 - Document structure markers
 - Cross-reference anchors
 - Table of contents generation
+
+### Track Changes Operations
+
+#### `InsertTrackedText(opts TrackedInsertOptions) error`
+
+Inserts text with revision tracking enabled. The inserted text appears as a tracked insertion (typically shown with green underline in Word) and can be accepted or rejected by a reviewer.
+
+**Options:**
+```go
+type TrackedInsertOptions struct {
+    Text      string         // Required: text to insert
+    Author    string         // Default: "Author"
+    Date      time.Time      // Default: current time
+    Position  InsertPosition // Where to insert
+    Anchor    string         // Anchor text for relative positioning
+    Style     ParagraphStyle // Style for the paragraph
+    Bold      bool
+    Italic    bool
+    Underline bool
+}
+```
+
+**Example:**
+```go
+updater.InsertTrackedText(godocx.TrackedInsertOptions{
+    Text:      "This is newly added text.",
+    Author:    "John Doe",
+    Position:  godocx.PositionEnd,
+    Bold:      true,
+    Italic:    true,
+})
+```
+
+#### `DeleteTrackedText(opts TrackedDeleteOptions) error`
+
+Marks existing text as deleted with revision tracking. The text appears as struck-through red text and can be accepted or rejected by a reviewer.
+
+**Options:**
+```go
+type TrackedDeleteOptions struct {
+    Anchor string    // Required: text to mark as deleted
+    Author string    // Default: "Author"
+    Date   time.Time // Default: current time
+}
+```
+
+**Example:**
+```go
+updater.DeleteTrackedText(godocx.TrackedDeleteOptions{
+    Anchor: "Old text to remove",
+    Author: "Jane Smith",
+})
+```
+
+### Table Cell Operations
+
+#### `UpdateTableCell(tableIndex, row, col int, value string) error`
+
+Updates the text content of a specific cell in an existing table. All indices are 1-based.
+
+**Note:** Nested tables (tables inside table cells) are not supported.
+
+**Example:**
+```go
+// Update cell at table 1, row 2, column 3
+updater.UpdateTableCell(1, 2, 3, "New cell content")
+```
+
+#### `MergeTableCellsHorizontal(tableIndex, row, startCol, endCol int) error`
+
+Merges cells horizontally in a single row. All indices are 1-based.
+
+**Example:**
+```go
+// Merge columns 2-4 in row 3 of table 1
+updater.MergeTableCellsHorizontal(1, 3, 2, 4)
+```
+
+#### `MergeTableCellsVertical(tableIndex, startRow, endRow, col int) error`
+
+Merges cells vertically in a single column. All indices are 1-based.
+
+**Example:**
+```go
+// Merge rows 2-5 in column 1 of table 1
+updater.MergeTableCellsVertical(1, 2, 5, 1)
+```
+
+### Content Deletion
+
+#### `DeleteParagraphs(text string, opts DeleteOptions) (int, error)`
+
+Removes paragraphs containing the specified text. Returns the number of paragraphs deleted.
+
+**Options:**
+```go
+type DeleteOptions struct {
+    MatchCase bool // Case-sensitive search
+    WholeWord bool // Match whole words only
+}
+```
+
+**Example:**
+```go
+count, err := updater.DeleteParagraphs("[DELETE]", godocx.DeleteOptions{
+    MatchCase: false,
+})
+```
+
+#### `DeleteTable(tableIndex int) error`
+
+Removes a table by its 1-based index.
+
+**Example:**
+```go
+updater.DeleteTable(2) // Delete second table
+```
+
+#### `DeleteImage(imageIndex int) error`
+
+Removes an image by its 1-based index.
+
+**Example:**
+```go
+updater.DeleteImage(1) // Delete first image
+```
+
+#### `DeleteChart(chartIndex int) error`
+
+Removes a chart by its 1-based index.
+
+**Example:**
+```go
+updater.DeleteChart(1) // Delete first chart
+```
+
+### Content Counting
+
+#### `GetChartCount() (int, error)`
+
+Returns the number of charts in the document.
+
+#### `GetTableCount() (int, error)`
+
+Returns the number of tables in the document.
+
+#### `GetParagraphCount() (int, error)`
+
+Returns the number of paragraphs in the document.
+
+#### `GetImageCount() (int, error)`
+
+Returns the number of images in the document.
+
+### Chart Reading
+
+#### `GetChartData(chartIndex int) (ChartData, error)`
+
+Reads the categories, series names, and values from an existing chart.
+
+**Example:**
+```go
+data, err := updater.GetChartData(1)
+if err != nil {
+    return err
+}
+fmt.Printf("Title: %s\n", data.ChartTitle)
+fmt.Printf("Categories: %v\n", data.Categories)
+for _, series := range data.Series {
+    fmt.Printf("Series: %s = %v\n", series.Name, series.Values)
+}
+```
+
+### Table of Contents Operations
+
+#### `InsertTOC(opts TOCOptions) error`
+
+Inserts a Table of Contents field into the document. The TOC uses Word field codes and populates when the document is opened in Word.
+
+**Options:**
+```go
+type TOCOptions struct {
+    Title         string // Default: "Table of Contents"
+    OutlineLevels string // Default: "1-3" (include Heading1-3)
+    Position      InsertPosition
+    Anchor        string
+}
+```
+
+**Example:**
+```go
+updater.InsertTOC(godocx.TOCOptions{
+    Title:         "Table of Contents",
+    OutlineLevels: "1-3",
+    Position:      godocx.PositionBeginning,
+})
+```
+
+#### `UpdateTOC() error`
+
+Marks an existing TOC for update. When opened in Word, it will prompt to refresh.
+
+#### `GetTOCEntries() ([]TOCEntry, error)`
+
+Extracts TOC entries from the document.
+
+**TOCEntry:**
+```go
+type TOCEntry struct {
+    Level int
+    Text  string
+    Page  int
+}
+```
+
+### Footnote and Endnote Operations
+
+#### `InsertFootnote(opts FootnoteOptions) error`
+
+Adds a footnote to the document.
+
+**Options:**
+```go
+type FootnoteOptions struct {
+    Text   string // Required: footnote content
+    Anchor string // Required: text to attach footnote to
+}
+```
+
+**Example:**
+```go
+updater.InsertFootnote(godocx.FootnoteOptions{
+    Text:   "Source: Annual Report 2024",
+    Anchor: "financial results",
+})
+```
+
+#### `InsertEndnote(opts EndnoteOptions) error`
+
+Adds an endnote to the document.
+
+**Example:**
+```go
+updater.InsertEndnote(godocx.EndnoteOptions{
+    Text:   "See Appendix A for details.",
+    Anchor: "additional information",
+})
+```
+
+### Comment Operations
+
+#### `InsertComment(opts CommentOptions) error`
+
+Adds a comment to the document attached to specific text.
+
+**Options:**
+```go
+type CommentOptions struct {
+    Text     string // Required: comment content
+    Author   string // Default: "Author"
+    Initials string // Default: first letter of Author
+    Anchor   string // Required: text to attach comment to
+}
+```
+
+**Example:**
+```go
+updater.InsertComment(godocx.CommentOptions{
+    Text:     "Please verify this data.",
+    Author:   "John Doe",
+    Anchor:   "revenue figure",
+})
+```
+
+#### `GetComments() ([]Comment, error)`
+
+Retrieves all comments from the document.
+
+**Comment:**
+```go
+type Comment struct {
+    ID       int
+    Author   string
+    Initials string
+    Date     string
+    Text     string
+}
+```
+
+### Custom Style Operations
+
+#### `AddStyle(def StyleDefinition) error`
+
+Adds a custom style to the document that can be used with paragraphs.
+
+**StyleDefinition:**
+```go
+type StyleDefinition struct {
+    ID          string         // Style ID (e.g., "CustomHeading")
+    Name        string         // Display name
+    Type        StyleType      // paragraph or character
+    BasedOn     string         // Parent style
+    NextStyle   string         // Next paragraph style
+    FontFamily  string         // e.g., "Arial"
+    FontSize    int            // half-points (24 = 12pt)
+    Color       string         // hex color
+    Bold        bool
+    Italic      bool
+    Underline   bool
+    Alignment   ParagraphAlignment
+    SpaceBefore int            // twips
+    SpaceAfter  int            // twips
+    LineSpacing int            // 240ths of line
+    OutlineLevel int           // 1-9 for TOC
+}
+```
+
+**Example:**
+```go
+updater.AddStyle(godocx.StyleDefinition{
+    ID:          "CustomHeading",
+    Name:        "Custom Heading",
+    BasedOn:     "Heading1",
+    FontFamily:  "Arial",
+    FontSize:    36, // 18pt
+    Color:       "FF0000",
+    Bold:        true,
+    Alignment:   godocx.AlignCenter,
+    OutlineLevel: 1,
+})
+```
+
+#### `AddStyles(defs []StyleDefinition) error`
+
+Batch adds multiple custom styles.
+
+### Page Number Operations
+
+#### `SetPageNumber(opts PageNumberOptions) error`
+
+Configures page numbering for the document.
+
+**Options:**
+```go
+type PageNumberOptions struct {
+    Start  int                // Starting page number (default: 1)
+    Format PageNumberFormat   // decimal, upperRoman, lowerRoman, upperLetter, lowerLetter
+}
+```
+
+**Example:**
+```go
+updater.SetPageNumber(godocx.PageNumberOptions{
+    Start:  1,
+    Format: godocx.PageNumDecimal,
+})
+
+// Roman numerals from page 5
+updater.SetPageNumber(godocx.PageNumberOptions{
+    Start:  5,
+    Format: godocx.PageNumUpperRoman,
+})
+```
+
+### Watermark Operations
+
+#### `SetTextWatermark(opts WatermarkOptions) error`
+
+Adds a diagonal text watermark to all pages.
+
+**Options:**
+```go
+type WatermarkOptions struct {
+    Text       string  // Required: watermark text
+    FontFamily string  // Default: "Calibri"
+    Color      string  // Default: "C0C0C0" (silver)
+    Opacity    float64 // Default: 0.5 (0.0-1.0)
+    Diagonal   bool    // Default: true (-45 degree rotation)
+}
+```
+
+**Example:**
+```go
+updater.SetTextWatermark(godocx.WatermarkOptions{
+    Text:     "CONFIDENTIAL",
+    FontFamily: "Arial",
+    Color:    "FF0000",
+    Opacity:  0.3,
+    Diagonal: true,
+})
+```
 
 ### Chart Creation
 

@@ -618,6 +618,209 @@ const (
 )
 ```
 
+### TrackedInsertOptions
+
+Options for inserting text with revision tracking.
+
+```go
+type TrackedInsertOptions struct {
+    Text      string         // Required: text to insert
+    Author    string         // Default: "Author"
+    Date      time.Time      // Default: current time
+    Position  InsertPosition // Where to insert
+    Anchor    string         // Anchor text for relative positioning
+    Style     ParagraphStyle // Style for the paragraph
+    Bold      bool
+    Italic    bool
+    Underline bool
+}
+```
+
+### TrackedDeleteOptions
+
+Options for marking text as deleted with revision tracking.
+
+```go
+type TrackedDeleteOptions struct {
+    Anchor string    // Required: text to mark as deleted
+    Author string    // Default: "Author"
+    Date   time.Time // Default: current time
+}
+```
+
+### DeleteOptions
+
+Options for content deletion.
+
+```go
+type DeleteOptions struct {
+    MatchCase bool // Case-sensitive search
+    WholeWord bool // Match whole words only
+}
+```
+
+### TOCOptions
+
+Options for Table of Contents insertion.
+
+```go
+type TOCOptions struct {
+    Title         string // Default: "Table of Contents"
+    OutlineLevels string // Default: "1-3"
+    Position      InsertPosition
+    Anchor        string
+}
+```
+
+### TOCEntry
+
+Represents an entry in the Table of Contents.
+
+```go
+type TOCEntry struct {
+    Level int    // Heading level (1-9)
+    Text  string // Entry text
+    Page  int    // Page number (if available)
+}
+```
+
+### FootnoteOptions
+
+Options for inserting a footnote.
+
+```go
+type FootnoteOptions struct {
+    Text   string // Required: footnote content
+    Anchor string // Required: text to attach footnote to
+}
+```
+
+### EndnoteOptions
+
+Options for inserting an endnote.
+
+```go
+type EndnoteOptions struct {
+    Text   string // Required: endnote content
+    Anchor string // Required: text to attach endnote to
+}
+```
+
+### CommentOptions
+
+Options for inserting a comment.
+
+```go
+type CommentOptions struct {
+    Text     string // Required: comment content
+    Author   string // Default: "Author"
+    Initials string // Default: first letter of Author
+    Anchor   string // Required: text to attach comment to
+}
+```
+
+### Comment
+
+Represents an existing comment in the document.
+
+```go
+type Comment struct {
+    ID       int
+    Author   string
+    Initials string
+    Date     string
+    Text     string
+}
+```
+
+### StyleType
+
+Defines the type of style.
+
+```go
+type StyleType string
+
+const (
+    StyleTypeParagraph StyleType = "paragraph"
+    StyleTypeCharacter StyleType = "character"
+)
+```
+
+### StyleDefinition
+
+Defines a custom style to add to the document.
+
+```go
+type StyleDefinition struct {
+    ID           string
+    Name         string
+    Type         StyleType
+    BasedOn      string
+    NextStyle    string
+    FontFamily   string
+    FontSize     int
+    Color        string
+    Bold         bool
+    Italic       bool
+    Underline    bool
+    Strikethrough bool
+    AllCaps      bool
+    SmallCaps    bool
+    Alignment    ParagraphAlignment
+    SpaceBefore  int
+    SpaceAfter   int
+    LineSpacing  int
+    IndentLeft   int
+    IndentRight  int
+    IndentFirst  int
+    KeepNext     bool
+    KeepLines    bool
+    PageBreakBef bool
+    OutlineLevel int
+}
+```
+
+### PageNumberFormat
+
+Page number format options.
+
+```go
+type PageNumberFormat string
+
+const (
+    PageNumDecimal     PageNumberFormat = "decimal"
+    PageNumUpperRoman PageNumberFormat = "upperRoman"
+    PageNumLowerRoman PageNumberFormat = "lowerRoman"
+    PageNumUpperLetter PageNumberFormat = "upperLetter"
+    PageNumLowerLetter PageNumberFormat = "lowerLetter"
+)
+```
+
+### PageNumberOptions
+
+Options for page numbering.
+
+```go
+type PageNumberOptions struct {
+    Start  int                // Starting page number (default: 1)
+    Format PageNumberFormat   // decimal, upperRoman, lowerRoman, upperLetter, lowerLetter
+}
+```
+
+### WatermarkOptions
+
+Options for text watermarks.
+
+```go
+type WatermarkOptions struct {
+    Text       string  // Required: watermark text
+    FontFamily string  // Default: "Calibri"
+    Color      string  // Default: "C0C0C0"
+    Opacity    float64 // Default: 0.5
+    Diagonal   bool    // Default: true
+}
+```
+
 ---
 
 ## Exported Functions
@@ -653,6 +856,14 @@ func DefaultFindOptions() FindOptions
 ```
 
 Returns find options with sensible defaults.
+
+### DefaultTOCOptions
+
+```go
+func DefaultTOCOptions() TOCOptions
+```
+
+Returns TOC options with sensible defaults (Title: "Table of Contents", OutlineLevels: "1-3", Position: Beginning).
 
 ### DefaultReplaceOptions
 
@@ -1192,6 +1403,237 @@ err := updater.CreateBookmarkWithText(
 - Document structure markers
 - Cross-reference anchors
 - Table of contents generation
+
+### Track Changes Operations
+
+#### InsertTrackedText
+
+```go
+func (u *Updater) InsertTrackedText(opts TrackedInsertOptions) error
+```
+
+Inserts text with revision tracking enabled.
+
+**Example:**
+```go
+updater.InsertTrackedText(godocx.TrackedInsertOptions{
+    Text:     "New text",
+    Author:   "John Doe",
+    Position: godocx.PositionEnd,
+})
+```
+
+#### DeleteTrackedText
+
+```go
+func (u *Updater) DeleteTrackedText(opts TrackedDeleteOptions) error
+```
+
+Marks text as deleted with revision tracking.
+
+### Table Cell Operations
+
+#### UpdateTableCell
+
+```go
+func (u *Updater) UpdateTableCell(tableIndex, row, col int, value string) error
+```
+
+Updates a specific cell in an existing table.
+
+#### MergeTableCellsHorizontal
+
+```go
+func (u *Updater) MergeTableCellsHorizontal(tableIndex, row, startCol, endCol int) error
+```
+
+Merges cells horizontally in a row.
+
+#### MergeTableCellsVertical
+
+```go
+func (u *Updater) MergeTableCellsVertical(tableIndex, startRow, endRow, col int) error
+```
+
+Merges cells vertically in a column.
+
+### Content Deletion
+
+#### DeleteParagraphs
+
+```go
+func (u *Updater) DeleteParagraphs(text string, opts DeleteOptions) (int, error)
+```
+
+Removes paragraphs containing specified text.
+
+#### DeleteTable
+
+```go
+func (u *Updater) DeleteTable(tableIndex int) error
+```
+
+Removes a table by index.
+
+#### DeleteImage
+
+```go
+func (u *Updater) DeleteImage(imageIndex int) error
+```
+
+Removes an image by index.
+
+#### DeleteChart
+
+```go
+func (u *Updater) DeleteChart(chartIndex int) error
+```
+
+Removes a chart by index.
+
+### Content Counting
+
+#### GetChartCount
+
+```go
+func (u *Updater) GetChartCount() (int, error)
+```
+
+Returns the number of charts.
+
+#### GetTableCount
+
+```go
+func (u *Updater) GetTableCount() (int, error)
+```
+
+Returns the number of tables.
+
+#### GetParagraphCount
+
+```go
+func (u *Updater) GetParagraphCount() (int, error)
+```
+
+Returns the number of paragraphs.
+
+#### GetImageCount
+
+```go
+func (u *Updater) GetImageCount() (int, error)
+```
+
+Returns the number of images.
+
+### Chart Reading
+
+#### GetChartData
+
+```go
+func (u *Updater) GetChartData(chartIndex int) (ChartData, error)
+```
+
+Reads chart data from an existing chart.
+
+### TOC Operations
+
+#### InsertTOC
+
+```go
+func (u *Updater) InsertTOC(opts TOCOptions) error
+```
+
+Inserts a Table of Contents.
+
+#### UpdateTOC
+
+```go
+func (u *Updater) UpdateTOC() error
+```
+
+Marks TOC for update.
+
+#### GetTOCEntries
+
+```go
+func (u *Updater) GetTOCEntries() ([]TOCEntry, error)
+```
+
+Extracts TOC entries.
+
+### Footnote/Endnote Operations
+
+#### InsertFootnote
+
+```go
+func (u *Updater) InsertFootnote(opts FootnoteOptions) error
+```
+
+Adds a footnote.
+
+#### InsertEndnote
+
+```go
+func (u *Updater) InsertEndnote(opts EndnoteOptions) error
+```
+
+Adds an endnote.
+
+### Comment Operations
+
+#### InsertComment
+
+```go
+func (u *Updater) InsertComment(opts CommentOptions) error
+```
+
+Adds a comment.
+
+#### GetComments
+
+```go
+func (u *Updater) GetComments() ([]Comment, error)
+```
+
+Retrieves all comments.
+
+### Style Operations
+
+#### AddStyle
+
+```go
+func (u *Updater) AddStyle(def StyleDefinition) error
+```
+
+Adds a custom style.
+
+#### AddStyles
+
+```go
+func (u *Updater) AddStyles(defs []StyleDefinition) error
+```
+
+Batch adds custom styles.
+
+### Page Number Operations
+
+#### SetPageNumber
+
+```go
+func (u *Updater) SetPageNumber(opts PageNumberOptions) error
+```
+
+Configures page numbering.
+
+### Watermark Operations
+
+#### SetTextWatermark
+
+```go
+func (u *Updater) SetTextWatermark(opts WatermarkOptions) error
+```
+
+Adds a text watermark.
 
 ---
 
