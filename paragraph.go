@@ -85,6 +85,11 @@ type RunOptions struct {
 
 	// FontName sets the ASCII/Unicode font (e.g. "Arial", "Times New Roman").
 	FontName string
+
+	// URL sets an inline hyperlink on this run. When non-empty the run is emitted
+	// as a <w:hyperlink> element. Default hyperlink styling (blue, underlined) is
+	// applied unless Color or Underline are explicitly set on the run.
+	URL string
 }
 
 // ParagraphOptions defines options for paragraph insertion
@@ -110,6 +115,10 @@ type ParagraphOptions struct {
 	// List properties (alternative to Style-based lists)
 	ListType  ListType // Type of list (bullet or numbered)
 	ListLevel int      // Indentation level (0-8, default 0)
+
+	// Pagination control
+	KeepNext  bool // Keep this paragraph on the same page as the next (prevents orphaned headings)
+	KeepLines bool // Keep all lines of this paragraph together on the same page
 }
 
 type listNumberingIDs struct {
@@ -148,8 +157,22 @@ func (u *Updater) InsertParagraph(opts ParagraphOptions) error {
 		return fmt.Errorf("read document.xml: %w", err)
 	}
 
+	// Pre-resolve URL relationships for any inline hyperlink runs.
+	urlRelIDs := make(map[string]string)
+	for _, run := range opts.Runs {
+		if run.URL != "" {
+			if _, seen := urlRelIDs[run.URL]; !seen {
+				rID, err := u.addHyperlinkRelationship(run.URL)
+				if err != nil {
+					return fmt.Errorf("register hyperlink for %q: %w", run.URL, err)
+				}
+				urlRelIDs[run.URL] = rID
+			}
+		}
+	}
+
 	// Generate paragraph XML
-	paraXML := generateParagraphXML(opts, listIDs)
+	paraXML := generateParagraphXML(opts, listIDs, urlRelIDs)
 
 	// Insert paragraph at the specified position
 	updated, err := insertParagraphAtPosition(raw, paraXML, opts)
@@ -175,8 +198,11 @@ func (u *Updater) InsertParagraphs(paragraphs []ParagraphOptions) error {
 	return nil
 }
 
-// generateParagraphXML creates the XML for a paragraph with the specified options
-func generateParagraphXML(opts ParagraphOptions, listIDs listNumberingIDs) []byte {
+// generateParagraphXML creates the XML for a paragraph with the specified options.
+// urlRelIDs maps URL strings to their relationship IDs (returned by addHyperlinkRelationship).
+// Runs with a non-empty URL are emitted as inline <w:hyperlink> elements when a
+// corresponding relationship ID exists in urlRelIDs; otherwise they fall back to plain runs.
+func generateParagraphXML(opts ParagraphOptions, listIDs listNumberingIDs, urlRelIDs map[string]string) []byte {
 	var buf bytes.Buffer
 
 	buf.WriteString("<w:p>")
@@ -213,11 +239,26 @@ func generateParagraphXML(opts ParagraphOptions, listIDs listNumberingIDs) []byt
 		}
 	}
 
+	// Pagination control: keep with next paragraph (headings) and keep lines together.
+	if opts.KeepNext {
+		buf.WriteString("<w:keepNext/>")
+	}
+	if opts.KeepLines {
+		buf.WriteString("<w:keepLines/>")
+	}
+
 	buf.WriteString("</w:pPr>")
 
 	if len(opts.Runs) > 0 {
 		// Multi-run paragraph: emit one <w:r> per RunOptions entry.
+		// Runs with a URL are wrapped in <w:hyperlink> when a relationship ID is available.
 		for _, run := range opts.Runs {
+			if run.URL != "" {
+				if rID, ok := urlRelIDs[run.URL]; ok {
+					writeHyperlinkRunXML(&buf, run, rID)
+					continue
+				}
+			}
 			writeRunXML(&buf, run)
 		}
 	} else {
@@ -288,6 +329,20 @@ func writeRunXML(buf *bytes.Buffer, run RunOptions) {
 	writeRunTextWithControls(buf, run.Text)
 
 	buf.WriteString("</w:r>")
+}
+
+// writeHyperlinkRunXML emits a <w:hyperlink> element wrapping a styled run.
+// Default hyperlink styling (blue, underlined) is applied unless the run overrides them.
+func writeHyperlinkRunXML(buf *bytes.Buffer, run RunOptions, rID string) {
+	buf.WriteString(fmt.Sprintf(`<w:hyperlink r:id="%s" w:history="1">`, xmlEscape(rID)))
+	if run.Color == "" {
+		run.Color = "0563C1"
+	}
+	if !run.Underline {
+		run.Underline = true
+	}
+	writeRunXML(buf, run)
+	buf.WriteString("</w:hyperlink>")
 }
 
 func writeRunTextWithControls(buf *bytes.Buffer, text string) {
@@ -657,6 +712,7 @@ func (u *Updater) AddHeading(level int, text string, position InsertPosition) er
 		Text:     text,
 		Style:    style,
 		Position: position,
+		KeepNext: true, // Prevent headings from being orphaned at the bottom of a page
 	})
 }
 
