@@ -90,7 +90,7 @@ func (u *Updater) AddStyle(def StyleDefinition) error {
 	if err != nil {
 		// Create new styles.xml
 		updated := generateStylesDocument(styleXML)
-		if err := os.WriteFile(stylesPath, updated, 0o644); err != nil {
+		if err := atomicWriteFile(stylesPath, updated, 0o644); err != nil {
 			return fmt.Errorf("write styles.xml: %w", err)
 		}
 		// Ensure relationship and content type
@@ -106,7 +106,7 @@ func (u *Updater) AddStyle(def StyleDefinition) error {
 		return fmt.Errorf("inject style: %w", err)
 	}
 
-	if err := os.WriteFile(stylesPath, updated, 0o644); err != nil {
+	if err := atomicWriteFile(stylesPath, updated, 0o644); err != nil {
 		return fmt.Errorf("write styles.xml: %w", err)
 	}
 
@@ -342,7 +342,7 @@ func (u *Updater) ensureStylesRelationship() error {
 			relID,
 		)
 		content = strings.Replace(content, "</Relationships>", newRel+"</Relationships>", 1)
-		if err := os.WriteFile(relsPath, []byte(content), 0o644); err != nil {
+		if err := atomicWriteFile(relsPath, []byte(content), 0o644); err != nil {
 			return fmt.Errorf("write rels: %w", err)
 		}
 	}
@@ -358,7 +358,7 @@ func (u *Updater) ensureStylesRelationship() error {
 	if !strings.Contains(ctContent, "styles.xml") {
 		override := `<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>`
 		ctContent = strings.Replace(ctContent, "</Types>", override+"</Types>", 1)
-		if err := os.WriteFile(ctPath, []byte(ctContent), 0o644); err != nil {
+		if err := atomicWriteFile(ctPath, []byte(ctContent), 0o644); err != nil {
 			return fmt.Errorf("write content types: %w", err)
 		}
 	}

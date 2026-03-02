@@ -10,6 +10,10 @@ import (
 	"strings"
 )
 
+// maxExtractedFileSize is the largest a single decompressed zip entry may be.
+// 256 MiB covers any realistic DOCX part while preventing zip-bomb exhaustion.
+const maxExtractedFileSize = 256 << 20 // 256 MiB
+
 func extractZip(zipPath, destDir string) error {
 	r, err := zip.OpenReader(zipPath)
 	if err != nil {
@@ -51,10 +55,18 @@ func extractZip(zipPath, destDir string) error {
 			return fmt.Errorf("create file %s: %w", target, err)
 		}
 
-		if _, err := io.Copy(out, rc); err != nil {
+		// Limit decompressed size to guard against zip-bomb payloads.
+		lr := io.LimitReader(rc, maxExtractedFileSize+1)
+		n, copyErr := io.Copy(out, lr)
+		if copyErr != nil {
 			out.Close()
 			rc.Close()
-			return fmt.Errorf("copy zip entry %s: %w", f.Name, err)
+			return fmt.Errorf("copy zip entry %s: %w", f.Name, copyErr)
+		}
+		if n > maxExtractedFileSize {
+			out.Close()
+			rc.Close()
+			return fmt.Errorf("zip entry %s exceeds maximum allowed size (%d bytes)", f.Name, maxExtractedFileSize)
 		}
 
 		if err := out.Close(); err != nil {

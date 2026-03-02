@@ -39,7 +39,7 @@ func (u *Updater) ensureNumberingXML() error {
 			if appendErr != nil {
 				return fmt.Errorf("append numbering definitions: %w", appendErr)
 			}
-			if err := os.WriteFile(numberingPath, []byte(updated), 0o644); err != nil {
+			if err := atomicWriteFile(numberingPath, []byte(updated), 0o644); err != nil {
 				return fmt.Errorf("write numbering.xml: %w", err)
 			}
 			u.setListNumberingIDs(bulletID, numberedID)
@@ -48,7 +48,7 @@ func (u *Updater) ensureNumberingXML() error {
 		return fmt.Errorf("read numbering.xml: %w", err)
 	} else {
 		numberingXML := generateNumberingXML()
-		if err := os.WriteFile(numberingPath, []byte(numberingXML), 0o644); err != nil {
+		if err := atomicWriteFile(numberingPath, []byte(numberingXML), 0o644); err != nil {
 			return fmt.Errorf("write numbering.xml: %w", err)
 		}
 		u.setListNumberingIDs(BulletListNumID, NumberedListNumID)
@@ -249,7 +249,7 @@ func (u *Updater) ensureNumberingContentType() error {
 	numberingOverride := `  <Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/>`
 	content = strings.Replace(content, "</Types>", numberingOverride+"\n</Types>", 1)
 
-	return os.WriteFile(contentTypesPath, []byte(content), 0o644)
+	return atomicWriteFile(contentTypesPath, []byte(content), 0o644)
 }
 
 // ensureNumberingRelationship adds numbering.xml relationship to document.xml.rels if not present
@@ -277,5 +277,5 @@ func (u *Updater) ensureNumberingRelationship() error {
 	numberingRel := fmt.Sprintf(`  <Relationship Id="%s" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/>`, relID)
 	content = strings.Replace(content, "</Relationships>", numberingRel+"\n</Relationships>", 1)
 
-	return os.WriteFile(relsPath, []byte(content), 0o644)
+	return atomicWriteFile(relsPath, []byte(content), 0o644)
 }

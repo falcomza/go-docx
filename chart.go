@@ -14,11 +14,16 @@ import (
 type ChartKind string
 
 const (
-	ChartKindColumn  ChartKind = "barChart"    // Column chart (vertical bars)
-	ChartKindBar    ChartKind = "barChart"    // Bar chart (horizontal bars)
-	ChartKindLine   ChartKind = "lineChart"   // Line chart
-	ChartKindPie    ChartKind = "pieChart"    // Pie chart
-	ChartKindArea   ChartKind = "areaChart"   // Area chart
+	// ChartKindColumn creates a column chart (vertical bars, <c:barDir val="col"/>).
+	ChartKindColumn ChartKind = "column"
+	// ChartKindBar creates a bar chart (horizontal bars, <c:barDir val="bar"/>).
+	// Although both column and bar charts emit a <c:barChart> element in OpenXML,
+	// they are kept as distinct constants so callers do not need to set
+	// BarChartOptions.Direction manually.
+	ChartKindBar     ChartKind = "bar"
+	ChartKindLine    ChartKind = "lineChart"  // Line chart
+	ChartKindPie     ChartKind = "pieChart"   // Pie chart
+	ChartKindArea    ChartKind = "areaChart"  // Area chart
 	ChartKindScatter ChartKind = "scatterChart" // Scatter chart (XY chart)
 )
 
@@ -38,10 +43,12 @@ type ChartOptions struct {
 	ValueAxisTitle    string // Y-axis title (vertical axis) — backward compat, prefer ValueAxis.Title
 
 	// Data
-	Categories     []string       // Category labels (X-axis)
+	Categories     []string        // Category labels (X-axis)
 	Series         []SeriesOptions // Data series with names and values
-	ShowLegend     bool           // Show legend — backward compat, prefer Legend.Show
-	LegendPosition string         // Legend position — backward compat, prefer Legend.Position
+	// Deprecated: Use Legend.Show instead.
+	ShowLegend     bool   // Show legend — backward compat, prefer Legend.Show
+	// Deprecated: Use Legend.Position instead.
+	LegendPosition string // Legend position — backward compat, prefer Legend.Position
 
 	// Chart dimensions (default: spans between margins)
 	Width  int // Width in EMUs (English Metric Units), 0 for default (6099523 = ~6.5")
@@ -282,7 +289,7 @@ func (u *Updater) createChartXML(chartPath string, opts ChartOptions) error {
 
 	xml := generateChartXML(opts)
 
-	if err := os.WriteFile(chartPath, xml, 0o644); err != nil {
+	if err := atomicWriteFile(chartPath, xml, 0o644); err != nil {
 		return fmt.Errorf("write chart xml: %w", err)
 	}
 
@@ -326,7 +333,7 @@ func generateChartXML(opts ChartOptions) []byte {
 
 	// Generate chart type specific content
 	switch opts.ChartKind {
-	case "barChart": // ChartKindColumn and ChartKindBar both use barChart
+	case ChartKindColumn, ChartKindBar: // both emit <c:barChart> with different barDir
 		buf.WriteString(generateBarChartXML(opts))
 	case ChartKindLine:
 		buf.WriteString(generateLineChartXML(opts))
@@ -817,7 +824,7 @@ func (u *Updater) createChartRelationships(relsPath, workbookPath string) error 
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/package" Target="%s"/>
 </Relationships>`, relPath)
 
-	if err := os.WriteFile(relsPath, []byte(xml), 0o644); err != nil {
+	if err := atomicWriteFile(relsPath, []byte(xml), 0o644); err != nil {
 		return fmt.Errorf("write relationships file: %w", err)
 	}
 
@@ -883,7 +890,7 @@ func (u *Updater) insertChartDrawing(chartIndex int, relID string, opts ChartOpt
 		return fmt.Errorf("insert chart: %w", err)
 	}
 
-	if err := os.WriteFile(docPath, updated, 0o644); err != nil {
+	if err := atomicWriteFile(docPath, updated, 0o644); err != nil {
 		return fmt.Errorf("write document.xml: %w", err)
 	}
 
@@ -1257,7 +1264,7 @@ func (u *Updater) addChartRelationship(chartIndex int) (string, error) {
 	n += copy(result[n:], []byte(insert))
 	copy(result[n:], raw[pos:])
 
-	if err := os.WriteFile(relsPath, result, 0o644); err != nil {
+	if err := atomicWriteFile(relsPath, result, 0o644); err != nil {
 		return "", fmt.Errorf("write relationships: %w", err)
 	}
 	return nextRelId, nil
@@ -1286,5 +1293,5 @@ func (u *Updater) addContentTypeOverride(chartIndex int) error {
 	n := copy(result, raw[:pos])
 	n += copy(result[n:], []byte(insert))
 	copy(result[n:], raw[pos:])
-	return os.WriteFile(contentTypesPath, result, 0o644)
+	return atomicWriteFile(contentTypesPath, result, 0o644)
 }

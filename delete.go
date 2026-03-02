@@ -46,7 +46,7 @@ func (u *Updater) DeleteParagraphs(text string, opts DeleteOptions) (int, error)
 		return count, fmt.Errorf("delete paragraphs: %w", err)
 	}
 
-	if err := os.WriteFile(docPath, updated, 0o644); err != nil {
+	if err := atomicWriteFile(docPath, updated, 0o644); err != nil {
 		return count, fmt.Errorf("write document.xml: %w", err)
 	}
 
@@ -73,7 +73,7 @@ func (u *Updater) DeleteTable(tableIndex int) error {
 		return fmt.Errorf("delete table %d: %w", tableIndex, err)
 	}
 
-	if err := os.WriteFile(docPath, updated, 0o644); err != nil {
+	if err := atomicWriteFile(docPath, updated, 0o644); err != nil {
 		return fmt.Errorf("write document.xml: %w", err)
 	}
 
@@ -101,7 +101,7 @@ func (u *Updater) DeleteImage(imageIndex int) error {
 		return fmt.Errorf("delete image %d: %w", imageIndex, err)
 	}
 
-	if err := os.WriteFile(docPath, updated, 0o644); err != nil {
+	if err := atomicWriteFile(docPath, updated, 0o644); err != nil {
 		return fmt.Errorf("write document.xml: %w", err)
 	}
 
@@ -128,7 +128,7 @@ func (u *Updater) DeleteChart(chartIndex int) error {
 		return fmt.Errorf("delete chart %d: %w", chartIndex, err)
 	}
 
-	if err := os.WriteFile(docPath, updated, 0o644); err != nil {
+	if err := atomicWriteFile(docPath, updated, 0o644); err != nil {
 		return fmt.Errorf("write document.xml: %w", err)
 	}
 
@@ -155,8 +155,7 @@ func deleteParagraphsContaining(raw []byte, text string, opts DeleteOptions) ([]
 	}
 
 	// Find all paragraphs
-	paraPattern := regexp.MustCompile(`(?s)<w:p[^>]*>.*?</w:p>`)
-	paras := paraPattern.FindAllIndex(raw, -1)
+	paras := extractParaPattern.FindAllIndex(raw, -1)
 
 	count := 0
 	var result bytes.Buffer
@@ -188,8 +187,7 @@ func deleteParagraphsContaining(raw []byte, text string, opts DeleteOptions) ([]
 // deleteNthTable removes the Nth table from the document
 func deleteNthTable(raw []byte, n int) ([]byte, error) {
 	// Find all tables
-	tablePattern := regexp.MustCompile(`(?s)<w:tbl>.*?</w:tbl>`)
-	tables := tablePattern.FindAllIndex(raw, -1)
+	tables := extractTablePattern.FindAllIndex(raw, -1)
 
 	if n > len(tables) {
 		return nil, fmt.Errorf("table %d not found (document has %d tables)", n, len(tables))

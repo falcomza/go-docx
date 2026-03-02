@@ -106,7 +106,7 @@ func (u *Updater) InsertImage(opts ImageOptions) error {
 	}
 
 	// Write updated document
-	if err := os.WriteFile(docPath, updated, 0o644); err != nil {
+	if err := atomicWriteFile(docPath, updated, 0o644); err != nil {
 		return fmt.Errorf("write document.xml: %w", err)
 	}
 
@@ -286,7 +286,7 @@ func (u *Updater) addImageRelationship(imageFileName string) (string, error) {
 	n += copy(result[n:], []byte(insert))
 	copy(result[n:], raw[pos:])
 
-	if err := os.WriteFile(relsPath, result, 0o644); err != nil {
+	if err := atomicWriteFile(relsPath, result, 0o644); err != nil {
 		return "", fmt.Errorf("write relationships: %w", err)
 	}
 
@@ -325,7 +325,7 @@ func (u *Updater) addImageContentType(ext, contentType string) error {
 	n += copy(result[n:], []byte(insert))
 	copy(result[n:], raw[pos:])
 
-	return os.WriteFile(contentTypesPath, result, 0o644)
+	return atomicWriteFile(contentTypesPath, result, 0o644)
 }
 
 // copyImageToMedia copies the image file to the word/media folder

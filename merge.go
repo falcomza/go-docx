@@ -40,7 +40,7 @@ func (u *Updater) MergeTableCellsHorizontal(tableIndex, row, startCol, endCol in
 		return err
 	}
 
-	return os.WriteFile(docPath, updated, 0o644)
+	return atomicWriteFile(docPath, updated, 0o644)
 }
 
 // MergeTableCellsVertical merges cells in a single column across rows.
@@ -77,7 +77,7 @@ func (u *Updater) MergeTableCellsVertical(tableIndex, startRow, endRow, col int)
 		return err
 	}
 
-	return os.WriteFile(docPath, updated, 0o644)
+	return atomicWriteFile(docPath, updated, 0o644)
 }
 
 // mergeTableCellsHorizontal performs horizontal cell merge on raw document XML.

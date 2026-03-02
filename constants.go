@@ -2,6 +2,11 @@ package godocx
 
 import "regexp"
 
+// FontSizeHalfPointsFactor is the multiplier to convert a font size expressed in
+// typographic points to the half-point units required by the Open XML w:sz and
+// w:szCs attributes (ECMA-376 Part 1 §17.3.2.38).
+const FontSizeHalfPointsFactor = 2
+
 // OpenXML constants for chart drawings
 const (
 	// ChartAnchorIDBase is the base value for anchor IDs in chart drawings
@@ -44,8 +49,10 @@ var (
 	// docPrIDPattern matches docPr id attributes in document.xml
 	docPrIDPattern = regexp.MustCompile(`docPr id="(\d+)"`)
 
-	// bookmarkIDPattern matches bookmark id attributes (w:bookmarkStart and w:bookmarkEnd)
-	bookmarkIDPattern = regexp.MustCompile(`w:id="(\d+)"`)
+	// bookmarkIDPattern matches w:id attributes on bookmark start elements only.
+	// Using a narrowly-scoped pattern prevents inflating the ID counter with
+	// w:id attributes on unrelated elements (w:tc, w:comment, w:ins, etc.).
+	bookmarkIDPattern = regexp.MustCompile(`<w:bookmarkStart[^>]+w:id="(\d+)"`)
 
 	// relIDPattern matches relationship IDs (e.g., rId1, rId2)
 	relIDPattern = regexp.MustCompile(`^rId(\d+)$`)
@@ -55,6 +62,22 @@ var (
 
 	// textContentPattern extracts text from a Word text run
 	textContentPattern = regexp.MustCompile(`<w:t(?:\s[^>]*)?>(.*)</w:t>`)
+
+	// extractTextPattern matches visible text inside <w:t> elements.
+	// Uses [ \t] (not \s) to avoid matching newlines within the tag.
+	extractTextPattern = regexp.MustCompile(`<w:t(?:[ \t][^>]*)?>([^<]*)</w:t>`)
+
+	// extractParaPattern matches full <w:p> paragraph elements.
+	extractParaPattern = regexp.MustCompile(`(?s)<w:p[^>]*>.*?</w:p>`)
+
+	// extractTablePattern matches full <w:tbl> table elements.
+	extractTablePattern = regexp.MustCompile(`(?s)<w:tbl>.*?</w:tbl>`)
+
+	// extractRowPattern matches full <w:tr> table-row elements.
+	extractRowPattern = regexp.MustCompile(`(?s)<w:tr[^>]*>.*?</w:tr>`)
+
+	// extractCellPattern matches full <w:tc> table-cell elements.
+	extractCellPattern = regexp.MustCompile(`(?s)<w:tc>.*?</w:tc>`)
 )
 
 // OpenXML namespace URIs

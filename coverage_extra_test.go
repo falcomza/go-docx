@@ -402,16 +402,15 @@ func TestValidateChartOptions_EdgeCases(t *testing.T) {
 
 func TestApplyChartDefaults(t *testing.T) {
 	t.Run("bar chart defaults", func(t *testing.T) {
-		// ChartKindBar and ChartKindColumn both equal "barChart",
-		// so the default direction is always "col". Users set
-		// BarChartOptions.Direction = BarDirectionBar explicitly for horizontal bars.
+		// ChartKindBar is the horizontal-bar sentinel ("bar"); applyChartDefaults
+		// should therefore set the direction to BarDirectionBar ("bar").
 		opts := applyChartDefaults(ChartOptions{
 			ChartKind:  ChartKindBar,
 			Categories: []string{"A"},
 			Series:     []SeriesOptions{{Name: "S", Values: []float64{1}}},
 		})
-		if opts.BarChartOptions.Direction != BarDirectionColumn {
-			t.Errorf("expected column direction (default for barChart kind), got %s", opts.BarChartOptions.Direction)
+		if opts.BarChartOptions.Direction != BarDirectionBar {
+			t.Errorf("expected bar direction for ChartKindBar, got %s", opts.BarChartOptions.Direction)
 		}
 	})
 

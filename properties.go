@@ -144,7 +144,7 @@ func (u *Updater) SetCoreProperties(props CoreProperties) error {
 	}
 
 	// Write updated core.xml
-	if err := os.WriteFile(corePath, []byte(content), 0o644); err != nil {
+	if err := atomicWriteFile(corePath, []byte(content), 0o644); err != nil {
 		return &DocxError{
 			Code:    "PROPERTIES_ERROR",
 			Message: "failed to write core properties",
@@ -218,7 +218,7 @@ func (u *Updater) SetAppProperties(props AppProperties) error {
 	}
 
 	// Write updated app.xml
-	if err := os.WriteFile(appPath, []byte(content), 0o644); err != nil {
+	if err := atomicWriteFile(appPath, []byte(content), 0o644); err != nil {
 		return &DocxError{
 			Code:    "PROPERTIES_ERROR",
 			Message: "failed to write app properties",
@@ -250,7 +250,7 @@ func (u *Updater) SetCustomProperties(properties []CustomProperty) error {
 	}
 
 	// Write custom.xml
-	if err := os.WriteFile(customPath, []byte(content), 0o644); err != nil {
+	if err := atomicWriteFile(customPath, []byte(content), 0o644); err != nil {
 		return &DocxError{
 			Code:    "PROPERTIES_ERROR",
 			Message: "failed to write custom properties",
@@ -525,7 +525,7 @@ func (u *Updater) addCustomPropertiesContentType() error {
 	content = strings.Replace(content, "</Types>", override+"</Types>", 1)
 
 	// Write updated content types
-	if err := os.WriteFile(contentTypesPath, []byte(content), 0o644); err != nil {
+	if err := atomicWriteFile(contentTypesPath, []byte(content), 0o644); err != nil {
 		return fmt.Errorf("write content types: %w", err)
 	}
 
@@ -563,7 +563,7 @@ func (u *Updater) addCustomPropertiesRelationship() error {
 	content = strings.Replace(content, "</Relationships>", newRel+"</Relationships>", 1)
 
 	// Write updated relationships
-	if err := os.WriteFile(relsPath, []byte(content), 0o644); err != nil {
+	if err := atomicWriteFile(relsPath, []byte(content), 0o644); err != nil {
 		return fmt.Errorf("write relationships: %w", err)
 	}
 

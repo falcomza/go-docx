@@ -90,7 +90,7 @@ func (u *Updater) InsertHyperlink(text, urlStr string, opts HyperlinkOptions) er
 	}
 
 	// Write updated document
-	if err := os.WriteFile(docPath, updated, 0o644); err != nil {
+	if err := atomicWriteFile(docPath, updated, 0o644); err != nil {
 		return NewXMLWriteError("document.xml", err)
 	}
 
@@ -134,7 +134,7 @@ func (u *Updater) InsertInternalLink(text, bookmarkName string, opts HyperlinkOp
 	}
 
 	// Write updated document
-	if err := os.WriteFile(docPath, updated, 0o644); err != nil {
+	if err := atomicWriteFile(docPath, updated, 0o644); err != nil {
 		return NewXMLWriteError("document.xml", err)
 	}
 
@@ -169,7 +169,7 @@ func (u *Updater) addHyperlinkRelationship(urlStr string) (string, error) {
 	content = strings.Replace(content, "</Relationships>", newRel+"</Relationships>", 1)
 
 	// Write updated relationships
-	if err := os.WriteFile(relsPath, []byte(content), 0o644); err != nil {
+	if err := atomicWriteFile(relsPath, []byte(content), 0o644); err != nil {
 		return "", fmt.Errorf("write relationships: %w", err)
 	}
 

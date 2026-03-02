@@ -58,7 +58,7 @@ func (u *Updater) SetPageNumber(opts PageNumberOptions) error {
 		return fmt.Errorf("set page number: %w", err)
 	}
 
-	if err := os.WriteFile(docPath, updated, 0o644); err != nil {
+	if err := atomicWriteFile(docPath, updated, 0o644); err != nil {
 		return fmt.Errorf("write document.xml: %w", err)
 	}
 

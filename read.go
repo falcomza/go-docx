@@ -191,8 +191,7 @@ func (u *Updater) extractTextFromXML(raw []byte) string {
 
 	// Extract text from <w:t> elements only (not <w:tc>, <w:tr>, etc.)
 	// The pattern matches <w:t> or <w:t followed by a space/attribute, but not <w:tc>, <w:tr>, etc.
-	textPattern := regexp.MustCompile(`<w:t(?:[ \t][^>]*)?>([^<]*)</w:t>`)
-	matches := textPattern.FindAllSubmatch(raw, -1)
+	matches := extractTextPattern.FindAllSubmatch(raw, -1)
 
 	for _, match := range matches {
 		if len(match) > 1 {
@@ -210,8 +209,7 @@ func (u *Updater) extractParagraphsFromXML(raw []byte) []string {
 	var paragraphs []string
 
 	// Find all <w:p> elements ((?s) allows . to match newlines)
-	paraPattern := regexp.MustCompile(`(?s)<w:p[^>]*>.*?</w:p>`)
-	paraMatches := paraPattern.FindAll(raw, -1)
+	paraMatches := extractParaPattern.FindAll(raw, -1)
 
 	for _, paraByte := range paraMatches {
 		// Extract text from this paragraph
@@ -229,8 +227,7 @@ func (u *Updater) extractTablesFromXML(raw []byte) [][][]string {
 	var tables [][][]string
 
 	// Find all <w:tbl> elements ((?s) allows . to match newlines)
-	tablePattern := regexp.MustCompile(`(?s)<w:tbl>.*?</w:tbl>`)
-	tableMatches := tablePattern.FindAll(raw, -1)
+	tableMatches := extractTablePattern.FindAll(raw, -1)
 
 	for _, tableBytes := range tableMatches {
 		table := u.extractTableData(tableBytes)
@@ -247,15 +244,13 @@ func (u *Updater) extractTableData(tableXML []byte) [][]string {
 	var rows [][]string
 
 	// Find all <w:tr> (table row) elements ((?s) allows . to match newlines)
-	rowPattern := regexp.MustCompile(`(?s)<w:tr[^>]*>.*?</w:tr>`)
-	rowMatches := rowPattern.FindAll(tableXML, -1)
+	rowMatches := extractRowPattern.FindAll(tableXML, -1)
 
 	for _, rowBytes := range rowMatches {
 		var cells []string
 
 		// Find all <w:tc> (table cell) elements ((?s) allows . to match newlines)
-		cellPattern := regexp.MustCompile(`(?s)<w:tc>.*?</w:tc>`)
-		cellMatches := cellPattern.FindAll(rowBytes, -1)
+		cellMatches := extractCellPattern.FindAll(rowBytes, -1)
 
 		for _, cellBytes := range cellMatches {
 			cellText := u.extractTextFromXML(cellBytes)

@@ -8,7 +8,7 @@ A powerful Go library for programmatically manipulating Microsoft Word (DOCX) do
 ## Features
 
 🎯 **Document Content**
-- **Paragraphs**: Styled text with headings, alignment, lists, and anchor positioning
+- **Paragraphs**: Styled text with headings (H1–H9), alignment, lists, and anchor positioning
 - **Tables**: Formatted tables with custom styles, borders, row heights, and cell merging
 - **Images**: Add images with automatic proportional sizing and flexible positioning
 - **Hyperlinks & Bookmarks**: External URLs, internal links, and bookmark management
@@ -176,7 +176,9 @@ u.InsertChart(godocx.ChartOptions{
 u.Save("with_charts.docx")
 ```
 
-**Supported chart types:** `ChartKindColumn`, `ChartKindBar`, `ChartKindLine`, `ChartKindPie`, `ChartKindArea`, `ChartKindScatter`
+**Supported chart types:** `ChartKindColumn` (vertical bars), `ChartKindBar` (horizontal bars), `ChartKindLine`, `ChartKindPie`, `ChartKindArea`, `ChartKindScatter`
+
+> **Note:** `ChartKindColumn` and `ChartKindBar` are distinct constants — `Column` renders vertically (the default bar chart orientation) while `Bar` renders horizontally. Both emit `<c:barChart>` XML with the appropriate `barDir` attribute.
 
 > **Note:** `ChartData` / `SeriesData` are used when *updating* existing charts (`UpdateChart`), while `ChartOptions` / `SeriesOptions` are used when *inserting* new charts (`InsertChart`).
 
@@ -221,6 +223,9 @@ u, _ := godocx.New("document.docx")
 defer u.Cleanup()
 
 u.AddHeading(1, "Executive Summary", godocx.PositionEnd)
+u.AddHeading(2, "Background", godocx.PositionEnd)
+u.AddHeading(3, "Scope", godocx.PositionEnd)
+u.AddHeading(4, "Methodology – Data Collection", godocx.PositionEnd) // H1–H9 supported
 
 u.AddText("This quarter showed strong growth.", godocx.PositionEnd)
 
@@ -745,7 +750,7 @@ u.Save("with_lists.docx")
 |--------|-------------|
 | `InsertParagraph(opts ParagraphOptions)` | Insert styled paragraph |
 | `InsertParagraphs(paragraphs []ParagraphOptions)` | Insert multiple paragraphs |
-| `AddHeading(level, text, position)` | Insert heading |
+| `AddHeading(level, text, position)` | Insert heading at level 1–9 (matches Word's built-in Heading 1 – Heading 9 styles) |
 | `AddText(text, position)` | Insert normal text |
 | `AddBulletItem(text, level, position)` | Insert bullet item |
 | `AddBulletList(items, level, position)` | Insert bullet list |
@@ -980,6 +985,11 @@ DOCX files are ZIP archives containing XML files. This library:
 3. Updates relationships (`_rels/*.rels`) and content types (`[Content_Types].xml`)
 4. Manages embedded Excel workbooks for chart data
 5. Re-packages everything into a new DOCX file
+
+**Reliability details:**
+- All in-place XML writes use an atomic write-then-rename strategy so a crash mid-write never leaves a corrupt file visible to readers
+- The ZIP extractor enforces a 256 MiB per-file cap to guard against zip-bomb payloads
+- XML escaping and unescaping use the stdlib `encoding/xml` codec throughout (no `html` package dependency)
 
 ## Roadmap
 

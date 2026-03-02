@@ -153,7 +153,7 @@ func updateChartXML(chartPath string, data ChartData) error {
 	// Ensure proper XML formatting: verify newline after XML declaration
 	updated = ensureXMLDeclarationNewline(updated)
 
-	if err := os.WriteFile(chartPath, updated, 0o644); err != nil {
+	if err := atomicWriteFile(chartPath, updated, 0o644); err != nil {
 		return fmt.Errorf("write chart xml: %w", err)
 	}
 

@@ -9,15 +9,24 @@ import (
 	"strings"
 )
 
-// xmlEscape escapes XML special characters.
-// Used by both chart XML and Excel XML generation.
+// xmlEscapeReplacer normalises the numeric entity refs that xml.EscapeText emits
+// for quote characters into the named-entity forms expected by the Word XML
+// serialiser and the existing test suite.
+var xmlEscapeReplacer = strings.NewReplacer("&#34;", "&quot;", "&#39;", "&apos;")
+
+// xmlEscape escapes XML special characters using the stdlib XML encoder.
+// This handles all edge cases including carriage-returns (&#xD;) and invalid
+// UTF-8 sequences, which a naive strings.ReplaceAll approach would miss.
+// Named entities (&quot;, &apos;) are used instead of numeric ones.
 func xmlEscape(s string) string {
-	s = strings.ReplaceAll(s, "&", "&amp;")
-	s = strings.ReplaceAll(s, "<", "&lt;")
-	s = strings.ReplaceAll(s, ">", "&gt;")
-	s = strings.ReplaceAll(s, "\"", "&quot;")
-	s = strings.ReplaceAll(s, "'", "&apos;")
-	return s
+	var b strings.Builder
+	if err := xml.EscapeText(&b, []byte(s)); err != nil {
+		// Fallback to manual escaping if the stdlib encoder fails.
+		return strings.NewReplacer(
+			"&", "&amp;", "<", "&lt;", ">", "&gt;", `"`, "&quot;", "'", "&apos;",
+		).Replace(s)
+	}
+	return xmlEscapeReplacer.Replace(b.String())
 }
 
 // formatFloat formats a float64 for XML output.
@@ -32,13 +41,17 @@ func columnLetters(n int) string {
 	if n <= 0 {
 		return "A"
 	}
-	var out []byte
+	// Write digits right-to-left into a fixed-size buffer to avoid
+	// the O(n²) repeated slice prepend of the naive approach.
+	var buf [8]byte
+	i := len(buf)
 	for n > 0 {
 		n--
-		out = append([]byte{byte('A' + (n % 26))}, out...)
+		i--
+		buf[i] = byte('A' + n%26)
 		n /= 26
 	}
-	return string(out)
+	return string(buf[i:])
 }
 
 // cellRef generates an Excel cell reference from column and row numbers.
@@ -97,6 +110,40 @@ func (u *Updater) getNextDocPrId() (int, error) {
 func (u *Updater) getNextDocumentRelId() (string, error) {
 	relsPath := filepath.Join(u.tempDir, "word", "_rels", "document.xml.rels")
 	return getNextRelIDFromFile(relsPath)
+}
+
+// atomicWriteFile writes data to path atomically using a write-then-rename
+// strategy. This prevents a partially-written (corrupted) file being visible
+// to readers if the process crashes mid-write on a local filesystem.
+func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, ".docx-write-*")
+	if err != nil {
+		return fmt.Errorf("create temp file: %w", err)
+	}
+	tmpName := tmp.Name()
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		os.Remove(tmpName)
+		return fmt.Errorf("write temp file: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmpName)
+		return fmt.Errorf("close temp file: %w", err)
+	}
+	if err := os.Chmod(tmpName, perm); err != nil {
+		os.Remove(tmpName)
+		return fmt.Errorf("chmod temp file: %w", err)
+	}
+	// On Windows, os.Rename fails with "Access is denied" when the destination
+	// already exists.  Remove it first; this sacrifices strict atomicity on
+	// Windows but is safe because we are always writing into a private temp dir.
+	_ = os.Remove(path)
+	if err := os.Rename(tmpName, path); err != nil {
+		os.Remove(tmpName)
+		return fmt.Errorf("rename temp file: %w", err)
+	}
+	return nil
 }
 
 // getNextRelIDFromFile finds the next available relationship ID in a .rels file.

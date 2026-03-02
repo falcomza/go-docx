@@ -105,7 +105,7 @@ func (u *Updater) ensureCommentsXML() (int, error) {
 
 	if _, err := os.Stat(commentsPath); os.IsNotExist(err) {
 		content := generateInitialCommentsXML()
-		if err := os.WriteFile(commentsPath, content, 0o644); err != nil {
+		if err := atomicWriteFile(commentsPath, content, 0o644); err != nil {
 			return 0, fmt.Errorf("write comments.xml: %w", err)
 		}
 
@@ -164,7 +164,7 @@ func (u *Updater) addCommentContent(id int, opts CommentOptions) error {
 	result = append(result, '\n')
 	result = append(result, raw[closeIdx:]...)
 
-	return os.WriteFile(commentsPath, result, 0o644)
+	return atomicWriteFile(commentsPath, result, 0o644)
 }
 
 // generateCommentEntry creates the XML for a single comment
@@ -239,7 +239,7 @@ func (u *Updater) insertCommentMarkers(anchor string, commentID int) error {
 	result = append(result, []byte(rangeEndXML)...)
 	result = append(result, raw[insertEndPos:]...)
 
-	return os.WriteFile(docPath, result, 0o644)
+	return atomicWriteFile(docPath, result, 0o644)
 }
 
 // getNextCommentID finds the next available comment ID in comments.xml

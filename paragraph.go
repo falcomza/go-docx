@@ -2,6 +2,7 @@ package godocx
 
 import (
 	"bytes"
+	"encoding/xml"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -16,6 +17,12 @@ const (
 	StyleHeading1   ParagraphStyle = "Heading1"
 	StyleHeading2   ParagraphStyle = "Heading2"
 	StyleHeading3   ParagraphStyle = "Heading3"
+	StyleHeading4   ParagraphStyle = "Heading4"
+	StyleHeading5   ParagraphStyle = "Heading5"
+	StyleHeading6   ParagraphStyle = "Heading6"
+	StyleHeading7   ParagraphStyle = "Heading7"
+	StyleHeading8   ParagraphStyle = "Heading8"
+	StyleHeading9   ParagraphStyle = "Heading9"
 	StyleTitle      ParagraphStyle = "Title"
 	StyleSubtitle   ParagraphStyle = "Subtitle"
 	StyleQuote      ParagraphStyle = "Quote"
@@ -129,10 +136,10 @@ type listNumberingIDs struct {
 // InsertParagraph inserts a new paragraph into the document
 func (u *Updater) InsertParagraph(opts ParagraphOptions) error {
 	if u == nil {
-		return fmt.Errorf("updater is nil")
+		return &DocxError{Code: ErrCodeValidation, Message: "updater is nil"}
 	}
 	if opts.Text == "" && len(opts.Runs) == 0 {
-		return fmt.Errorf("paragraph text cannot be empty: provide Text or at least one Run")
+		return NewValidationError("text", "paragraph text cannot be empty: provide Text or at least one Run")
 	}
 
 	// Default style to Normal if not specified
@@ -181,19 +188,80 @@ func (u *Updater) InsertParagraph(opts ParagraphOptions) error {
 	}
 
 	// Write updated document
-	if err := os.WriteFile(docPath, updated, 0o644); err != nil {
+	if err := atomicWriteFile(docPath, updated, 0o644); err != nil {
 		return fmt.Errorf("write document.xml: %w", err)
 	}
 
 	return nil
 }
 
-// InsertParagraphs inserts multiple paragraphs in batch
+// InsertParagraphs inserts multiple paragraphs in a single read-modify-write pass,
+// which is significantly more efficient than calling InsertParagraph N times.
 func (u *Updater) InsertParagraphs(paragraphs []ParagraphOptions) error {
+	if u == nil {
+		return &DocxError{Code: ErrCodeValidation, Message: "updater is nil"}
+	}
+	if len(paragraphs) == 0 {
+		return nil
+	}
+
+	// Validate all paragraphs upfront before touching any files.
 	for i, opts := range paragraphs {
-		if err := u.InsertParagraph(opts); err != nil {
+		if opts.Text == "" && len(opts.Runs) == 0 {
+			return fmt.Errorf("paragraph %d: %w", i,
+				NewValidationError("text", "paragraph text cannot be empty: provide Text or at least one Run"))
+		}
+	}
+
+	// Ensure numbering.xml exists once if any paragraph uses a list.
+	for _, opts := range paragraphs {
+		if opts.ListType != "" {
+			if err := u.ensureNumberingXML(); err != nil {
+				return fmt.Errorf("ensure numbering: %w", err)
+			}
+			break
+		}
+	}
+	listIDs := u.getListNumberingIDs()
+
+	// Pre-register all URL relationships in a single pass.
+	urlRelIDs := make(map[string]string)
+	for _, opts := range paragraphs {
+		for _, run := range opts.Runs {
+			if run.URL != "" {
+				if _, seen := urlRelIDs[run.URL]; !seen {
+					rID, err := u.addHyperlinkRelationship(run.URL)
+					if err != nil {
+						return fmt.Errorf("register hyperlink for %q: %w", run.URL, err)
+					}
+					urlRelIDs[run.URL] = rID
+				}
+			}
+		}
+	}
+
+	// Read document.xml once.
+	docPath := filepath.Join(u.tempDir, "word", "document.xml")
+	raw, err := os.ReadFile(docPath)
+	if err != nil {
+		return fmt.Errorf("read document.xml: %w", err)
+	}
+
+	// Apply all insertions in memory.
+	for i, opts := range paragraphs {
+		if opts.Style == "" {
+			opts.Style = StyleNormal
+		}
+		paraXML := generateParagraphXML(opts, listIDs, urlRelIDs)
+		raw, err = insertParagraphAtPosition(raw, paraXML, opts)
+		if err != nil {
 			return fmt.Errorf("insert paragraph %d: %w", i, err)
 		}
+	}
+
+	// Write document.xml once.
+	if err := atomicWriteFile(docPath, raw, 0o644); err != nil {
+		return fmt.Errorf("write document.xml: %w", err)
 	}
 	return nil
 }
@@ -304,7 +372,11 @@ func writeRunXML(buf *bytes.Buffer, run RunOptions) {
 			buf.WriteString("<w:strike/>")
 		}
 		if run.Color != "" {
-			buf.WriteString(fmt.Sprintf(`<w:color w:val="%s"/>`, xmlEscape(run.Color)))
+			// normalizeHexColor validates and normalises the value; skip invalid strings
+			// to avoid emitting malformed XML attribute values.
+			if normalized := normalizeHexColor(run.Color); normalized != "" {
+				buf.WriteString(fmt.Sprintf(`<w:color w:val="%s"/>`, normalized))
+			}
 		}
 		if run.Highlight != "" {
 			buf.WriteString(fmt.Sprintf(`<w:highlight w:val="%s"/>`, xmlEscape(run.Highlight)))
@@ -313,8 +385,8 @@ func writeRunXML(buf *bytes.Buffer, run RunOptions) {
 			buf.WriteString(`<w:u w:val="single"/>`)
 		}
 		if run.FontSize > 0 {
-			// w:sz is in half-points
-			hp := int(run.FontSize * 2)
+			// w:sz / w:szCs values are in half-points (see FontSizeHalfPointsFactor).
+			hp := int(run.FontSize * FontSizeHalfPointsFactor)
 			buf.WriteString(fmt.Sprintf(`<w:sz w:val="%d"/>`, hp))
 			buf.WriteString(fmt.Sprintf(`<w:szCs w:val="%d"/>`, hp))
 		}
@@ -682,30 +754,47 @@ func normalizeWhitespace(s string) string {
 	return strings.Join(strings.Fields(s), " ")
 }
 
+// xmlUnescape decodes XML character references, including the five predefined
+// named entities (&amp; &lt; &gt; &quot; &apos;) and numeric references
+// (&#160; &#x00A0;). Uses the stdlib XML decoder for correctness.
 func xmlUnescape(s string) string {
-	replacer := strings.NewReplacer(
-		"&lt;", "<",
-		"&gt;", ">",
-		"&quot;", `"`,
-		"&apos;", "'",
-		"&amp;", "&",
-	)
-	return replacer.Replace(s)
+	d := xml.NewDecoder(strings.NewReader("<x>" + s + "</x>"))
+	tok, err := d.Token() // <x> StartElement
+	if err != nil {
+		return s
+	}
+	_ = tok
+	tok, err = d.Token() // CharData or EndElement if s is empty
+	if err != nil {
+		return s
+	}
+	if cd, ok := tok.(xml.CharData); ok {
+		return string(cd)
+	}
+	return s
 }
 
-// AddHeading is a convenience function to add a heading paragraph
+// headingStyles maps heading level (1-9) to the corresponding ParagraphStyle.
+var headingStyles = [10]ParagraphStyle{
+	0: "", // unused – levels are 1-based
+	1: StyleHeading1,
+	2: StyleHeading2,
+	3: StyleHeading3,
+	4: StyleHeading4,
+	5: StyleHeading5,
+	6: StyleHeading6,
+	7: StyleHeading7,
+	8: StyleHeading8,
+	9: StyleHeading9,
+}
+
+// AddHeading is a convenience function to add a heading paragraph at the
+// specified level (1–9), matching Word's built-in Heading 1 – Heading 9 styles.
 func (u *Updater) AddHeading(level int, text string, position InsertPosition) error {
-	style := StyleHeading1
-	switch level {
-	case 1:
-		style = StyleHeading1
-	case 2:
-		style = StyleHeading2
-	case 3:
-		style = StyleHeading3
-	default:
-		return fmt.Errorf("heading level must be 1, 2, or 3")
+	if level < 1 || level > 9 {
+		return fmt.Errorf("heading level must be between 1 and 9, got %d", level)
 	}
+	style := headingStyles[level]
 
 	return u.InsertParagraph(ParagraphOptions{
 		Text:     text,

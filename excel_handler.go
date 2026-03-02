@@ -93,7 +93,7 @@ func updateEmbeddedWorkbook(xlsxPath string, data ChartData) error {
 	if err := os.MkdirAll(filepath.Dir(xlsxPath), 0o755); err != nil {
 		return fmt.Errorf("create workbook parent dir: %w", err)
 	}
-	if err := os.WriteFile(xlsxPath, buf.Bytes(), 0o644); err != nil {
+	if err := atomicWriteFile(xlsxPath, buf.Bytes(), 0o644); err != nil {
 		return fmt.Errorf("write embedded workbook: %w", err)
 	}
 

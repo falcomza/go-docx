@@ -196,7 +196,7 @@ func (u *Updater) InsertTable(opts TableOptions) error {
 	}
 
 	// Write updated document
-	if err := os.WriteFile(docPath, updated, 0o644); err != nil {
+	if err := atomicWriteFile(docPath, updated, 0o644); err != nil {
 		return fmt.Errorf("write document.xml: %w", err)
 	}
 

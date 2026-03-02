@@ -123,7 +123,7 @@ func (u *Updater) SetHeader(content HeaderFooterContent, opts HeaderOptions) err
 	headerXML := u.generateHeaderFooterXML(content, true)
 
 	// Write header file
-	if err := os.WriteFile(headerPath, headerXML, 0o644); err != nil {
+	if err := atomicWriteFile(headerPath, headerXML, 0o644); err != nil {
 		return NewHeaderFooterError("failed to write header", err)
 	}
 
@@ -171,7 +171,7 @@ func (u *Updater) SetFooter(content HeaderFooterContent, opts FooterOptions) err
 	footerXML := u.generateHeaderFooterXML(content, false)
 
 	// Write footer file
-	if err := os.WriteFile(footerPath, footerXML, 0o644); err != nil {
+	if err := atomicWriteFile(footerPath, footerXML, 0o644); err != nil {
 		return NewHeaderFooterError("failed to write footer", err)
 	}
 
@@ -394,7 +394,7 @@ func (u *Updater) addHeaderFooterRelationship(filename, hdrFtrType string) (stri
 	content = strings.Replace(content, "</Relationships>", newRel+"</Relationships>", 1)
 
 	// Write updated relationships
-	if err := os.WriteFile(relsPath, []byte(content), 0o644); err != nil {
+	if err := atomicWriteFile(relsPath, []byte(content), 0o644); err != nil {
 		return "", fmt.Errorf("write relationships: %w", err)
 	}
 
@@ -428,7 +428,7 @@ func (u *Updater) updateDocumentForHeaderFooter(hdrFtrType string, hdrFtr string
 	}
 
 	// Write updated document
-	if err := os.WriteFile(docPath, []byte(content), 0o644); err != nil {
+	if err := atomicWriteFile(docPath, []byte(content), 0o644); err != nil {
 		return fmt.Errorf("write document: %w", err)
 	}
 
@@ -536,7 +536,7 @@ func (u *Updater) addHeaderFooterContentType(filename, hdrFtrType string) error 
 	content = strings.Replace(content, "</Types>", override+"</Types>", 1)
 
 	// Write updated content types
-	if err := os.WriteFile(contentTypesPath, []byte(content), 0o644); err != nil {
+	if err := atomicWriteFile(contentTypesPath, []byte(content), 0o644); err != nil {
 		return fmt.Errorf("write content types: %w", err)
 	}
 
