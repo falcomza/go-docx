@@ -3,6 +3,7 @@ package godocx
 import (
 	"bytes"
 	"fmt"
+	"html"
 	"os"
 	"path/filepath"
 	"strings"
@@ -129,10 +130,10 @@ type listNumberingIDs struct {
 // InsertParagraph inserts a new paragraph into the document
 func (u *Updater) InsertParagraph(opts ParagraphOptions) error {
 	if u == nil {
-		return fmt.Errorf("updater is nil")
+		return &DocxError{Code: ErrCodeValidation, Message: "updater is nil"}
 	}
 	if opts.Text == "" && len(opts.Runs) == 0 {
-		return fmt.Errorf("paragraph text cannot be empty: provide Text or at least one Run")
+		return NewValidationError("text", "paragraph text cannot be empty: provide Text or at least one Run")
 	}
 
 	// Default style to Normal if not specified
@@ -188,12 +189,73 @@ func (u *Updater) InsertParagraph(opts ParagraphOptions) error {
 	return nil
 }
 
-// InsertParagraphs inserts multiple paragraphs in batch
+// InsertParagraphs inserts multiple paragraphs in a single read-modify-write pass,
+// which is significantly more efficient than calling InsertParagraph N times.
 func (u *Updater) InsertParagraphs(paragraphs []ParagraphOptions) error {
+	if u == nil {
+		return &DocxError{Code: ErrCodeValidation, Message: "updater is nil"}
+	}
+	if len(paragraphs) == 0 {
+		return nil
+	}
+
+	// Validate all paragraphs upfront before touching any files.
 	for i, opts := range paragraphs {
-		if err := u.InsertParagraph(opts); err != nil {
+		if opts.Text == "" && len(opts.Runs) == 0 {
+			return fmt.Errorf("paragraph %d: %w", i,
+				NewValidationError("text", "paragraph text cannot be empty: provide Text or at least one Run"))
+		}
+	}
+
+	// Ensure numbering.xml exists once if any paragraph uses a list.
+	for _, opts := range paragraphs {
+		if opts.ListType != "" {
+			if err := u.ensureNumberingXML(); err != nil {
+				return fmt.Errorf("ensure numbering: %w", err)
+			}
+			break
+		}
+	}
+	listIDs := u.getListNumberingIDs()
+
+	// Pre-register all URL relationships in a single pass.
+	urlRelIDs := make(map[string]string)
+	for _, opts := range paragraphs {
+		for _, run := range opts.Runs {
+			if run.URL != "" {
+				if _, seen := urlRelIDs[run.URL]; !seen {
+					rID, err := u.addHyperlinkRelationship(run.URL)
+					if err != nil {
+						return fmt.Errorf("register hyperlink for %q: %w", run.URL, err)
+					}
+					urlRelIDs[run.URL] = rID
+				}
+			}
+		}
+	}
+
+	// Read document.xml once.
+	docPath := filepath.Join(u.tempDir, "word", "document.xml")
+	raw, err := os.ReadFile(docPath)
+	if err != nil {
+		return fmt.Errorf("read document.xml: %w", err)
+	}
+
+	// Apply all insertions in memory.
+	for i, opts := range paragraphs {
+		if opts.Style == "" {
+			opts.Style = StyleNormal
+		}
+		paraXML := generateParagraphXML(opts, listIDs, urlRelIDs)
+		raw, err = insertParagraphAtPosition(raw, paraXML, opts)
+		if err != nil {
 			return fmt.Errorf("insert paragraph %d: %w", i, err)
 		}
+	}
+
+	// Write document.xml once.
+	if err := os.WriteFile(docPath, raw, 0o644); err != nil {
+		return fmt.Errorf("write document.xml: %w", err)
 	}
 	return nil
 }
@@ -304,7 +366,11 @@ func writeRunXML(buf *bytes.Buffer, run RunOptions) {
 			buf.WriteString("<w:strike/>")
 		}
 		if run.Color != "" {
-			buf.WriteString(fmt.Sprintf(`<w:color w:val="%s"/>`, xmlEscape(run.Color)))
+			// normalizeHexColor validates and normalises the value; skip invalid strings
+			// to avoid emitting malformed XML attribute values.
+			if normalized := normalizeHexColor(run.Color); normalized != "" {
+				buf.WriteString(fmt.Sprintf(`<w:color w:val="%s"/>`, normalized))
+			}
 		}
 		if run.Highlight != "" {
 			buf.WriteString(fmt.Sprintf(`<w:highlight w:val="%s"/>`, xmlEscape(run.Highlight)))
@@ -313,8 +379,8 @@ func writeRunXML(buf *bytes.Buffer, run RunOptions) {
 			buf.WriteString(`<w:u w:val="single"/>`)
 		}
 		if run.FontSize > 0 {
-			// w:sz is in half-points
-			hp := int(run.FontSize * 2)
+			// w:sz / w:szCs values are in half-points (see FontSizeHalfPointsFactor).
+			hp := int(run.FontSize * FontSizeHalfPointsFactor)
 			buf.WriteString(fmt.Sprintf(`<w:sz w:val="%d"/>`, hp))
 			buf.WriteString(fmt.Sprintf(`<w:szCs w:val="%d"/>`, hp))
 		}
@@ -683,15 +749,12 @@ func normalizeWhitespace(s string) string {
 	return strings.Join(strings.Fields(s), " ")
 }
 
+// xmlUnescape decodes XML/HTML character references, including named entities
+// (&amp; &lt; &gt; &quot; &apos;) and numeric references (&#160; &#x00A0;).
+// It delegates to html.UnescapeString which handles the full HTML5 entity table;
+// all named entities defined in XML 1.0 are a strict subset of that table.
 func xmlUnescape(s string) string {
-	replacer := strings.NewReplacer(
-		"&lt;", "<",
-		"&gt;", ">",
-		"&quot;", `"`,
-		"&apos;", "'",
-		"&amp;", "&",
-	)
-	return replacer.Replace(s)
+	return html.UnescapeString(s)
 }
 
 // AddHeading is a convenience function to add a heading paragraph

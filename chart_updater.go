@@ -12,6 +12,11 @@ import (
 )
 
 // Updater manages a DOCX document for programmatic reading and writing.
+//
+// An Updater is not safe for concurrent use by multiple goroutines. All
+// operations read and write files in a shared temporary directory; callers
+// must serialise access externally if they need to issue operations from
+// multiple goroutines.
 type Updater struct {
 	originalPath  string
 	tempDir       string

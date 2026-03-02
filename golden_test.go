@@ -16,7 +16,7 @@ func TestGolden_GenerateParagraphXML_Normal(t *testing.T) {
 	}
 	listIDs := listNumberingIDs{bulletNumID: 1, numberedNumID: 2}
 
-	result := string(generateParagraphXML(opts, listIDs))
+	result := string(generateParagraphXML(opts, listIDs, map[string]string{}))
 
 	expected := `<w:p><w:pPr></w:pPr><w:r><w:t>Hello world</w:t></w:r></w:p>`
 	if result != expected {
@@ -31,7 +31,7 @@ func TestGolden_GenerateParagraphXML_Heading(t *testing.T) {
 	}
 	listIDs := listNumberingIDs{}
 
-	result := string(generateParagraphXML(opts, listIDs))
+	result := string(generateParagraphXML(opts, listIDs, map[string]string{}))
 
 	if !strings.Contains(result, `<w:pStyle w:val="Heading1"/>`) {
 		t.Errorf("expected Heading1 style in: %s", result)
@@ -51,7 +51,7 @@ func TestGolden_GenerateParagraphXML_BoldItalic(t *testing.T) {
 	}
 	listIDs := listNumberingIDs{}
 
-	result := string(generateParagraphXML(opts, listIDs))
+	result := string(generateParagraphXML(opts, listIDs, map[string]string{}))
 
 	expected := `<w:p><w:pPr></w:pPr><w:r><w:rPr><w:b/><w:i/><w:u w:val="single"/></w:rPr><w:t>Formatted</w:t></w:r></w:p>`
 	if result != expected {
@@ -67,7 +67,7 @@ func TestGolden_GenerateParagraphXML_Alignment(t *testing.T) {
 	}
 	listIDs := listNumberingIDs{}
 
-	result := string(generateParagraphXML(opts, listIDs))
+	result := string(generateParagraphXML(opts, listIDs, map[string]string{}))
 
 	if !strings.Contains(result, `<w:jc w:val="center"/>`) {
 		t.Errorf("expected center alignment in: %s", result)
@@ -83,7 +83,7 @@ func TestGolden_GenerateParagraphXML_BulletList(t *testing.T) {
 	}
 	listIDs := listNumberingIDs{bulletNumID: 5, numberedNumID: 6}
 
-	result := string(generateParagraphXML(opts, listIDs))
+	result := string(generateParagraphXML(opts, listIDs, map[string]string{}))
 
 	if !strings.Contains(result, `<w:ilvl w:val="0"/>`) {
 		t.Errorf("expected ilvl in: %s", result)
@@ -100,7 +100,7 @@ func TestGolden_GenerateParagraphXML_LineBreaks(t *testing.T) {
 	}
 	listIDs := listNumberingIDs{}
 
-	result := string(generateParagraphXML(opts, listIDs))
+	result := string(generateParagraphXML(opts, listIDs, map[string]string{}))
 
 	if !strings.Contains(result, "<w:br/>") {
 		t.Errorf("expected <w:br/> for newline in: %s", result)
@@ -117,7 +117,7 @@ func TestGolden_GenerateParagraphXML_XMLEscaping(t *testing.T) {
 	}
 	listIDs := listNumberingIDs{}
 
-	result := string(generateParagraphXML(opts, listIDs))
+	result := string(generateParagraphXML(opts, listIDs, map[string]string{}))
 
 	if !strings.Contains(result, "&lt;special&gt;") {
 		t.Errorf("expected escaped angle brackets in: %s", result)

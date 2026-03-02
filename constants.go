@@ -2,6 +2,11 @@ package godocx
 
 import "regexp"
 
+// FontSizeHalfPointsFactor is the multiplier to convert a font size expressed in
+// typographic points to the half-point units required by the Open XML w:sz and
+// w:szCs attributes (ECMA-376 Part 1 §17.3.2.38).
+const FontSizeHalfPointsFactor = 2
+
 // OpenXML constants for chart drawings
 const (
 	// ChartAnchorIDBase is the base value for anchor IDs in chart drawings
