@@ -87,8 +87,8 @@ type RunOptions struct {
 	FontName string
 
 	// URL sets an inline hyperlink on this run. When non-empty the run is emitted
-	// as a <w:hyperlink> element. Default hyperlink styling (blue, underlined) is
-	// applied unless Color or Underline are explicitly set on the run.
+	// as a <w:hyperlink> element. Hyperlinks are always underlined; Color defaults
+	// to "0563C1" (Word's standard blue) but can be overridden by setting Color.
 	URL string
 }
 
@@ -332,15 +332,14 @@ func writeRunXML(buf *bytes.Buffer, run RunOptions) {
 }
 
 // writeHyperlinkRunXML emits a <w:hyperlink> element wrapping a styled run.
-// Default hyperlink styling (blue, underlined) is applied unless the run overrides them.
+// Hyperlinks are always underlined. Color defaults to "0563C1" (Word blue) but
+// can be overridden by setting run.Color before calling this function.
 func writeHyperlinkRunXML(buf *bytes.Buffer, run RunOptions, rID string) {
 	buf.WriteString(fmt.Sprintf(`<w:hyperlink r:id="%s" w:history="1">`, xmlEscape(rID)))
 	if run.Color == "" {
 		run.Color = "0563C1"
 	}
-	if !run.Underline {
-		run.Underline = true
-	}
+	run.Underline = true
 	writeRunXML(buf, run)
 	buf.WriteString("</w:hyperlink>")
 }
