@@ -151,6 +151,105 @@ func TestNew_DotxViaNewFromBytes(t *testing.T) {
 	}
 }
 
+// buildFixtureNS0Docx returns a minimal in-memory DOCX where the
+// WordprocessingML namespace is bound to the "ns0" prefix instead of the
+// canonical "w" prefix.  This mimics the output of python-docx / lxml.
+func buildFixtureNS0Docx(t *testing.T) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	addZipEntry(t, zw, "[Content_Types].xml",
+		`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`+
+			`<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">`+
+			`<Override PartName="/word/document.xml" ContentType="`+DocxMainContentType+`"/>`+
+			`</Types>`)
+	addZipEntry(t, zw, "_rels/.rels",
+		`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`+
+			`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">`+
+			`<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>`+
+			`</Relationships>`)
+	// document.xml uses "ns0:" for WML elements — the python-docx / lxml style
+	addZipEntry(t, zw, "word/document.xml",
+		`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`+
+			`<ns0:document xmlns:ns0="http://schemas.openxmlformats.org/wordprocessingml/2006/main">`+
+			`<ns0:body>`+
+			`<ns0:p><ns0:r><ns0:t>Template content</ns0:t></ns0:r></ns0:p>`+
+			`<ns0:sectPr><ns0:pgSz ns0:w="12240" ns0:h="15840"/></ns0:sectPr>`+
+			`</ns0:body>`+
+			`</ns0:document>`)
+	addZipEntry(t, zw, "word/_rels/document.xml.rels",
+		`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`+
+			`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>`)
+	if err := zw.Close(); err != nil {
+		t.Fatalf("close ns0 docx zip: %v", err)
+	}
+	return buf.Bytes()
+}
+
+// TestNew_NS0NamespacePrefixNormalised verifies that a DOCX produced by
+// python-docx/lxml — which binds the WML namespace to "ns0:" instead of
+// the canonical "w:" — can have content appended with AddHeading,
+// InsertParagraph, and InsertTable, and that the appended content is
+// present in the saved output.
+//
+// Regression test for: appended content missing when template uses a
+// non-standard WML namespace prefix (the "ns0 bug").
+func TestNew_NS0NamespacePrefixNormalised(t *testing.T) {
+	tmp := t.TempDir()
+	docxPath := tmp + "/ns0_template.docx"
+	outputPath := tmp + "/ns0_output.docx"
+
+	if err := os.WriteFile(docxPath, buildFixtureNS0Docx(t), 0o644); err != nil {
+		t.Fatalf("write ns0 docx: %v", err)
+	}
+
+	u, err := New(docxPath)
+	if err != nil {
+		t.Fatalf("New(ns0 docx) failed: %v", err)
+	}
+	defer u.Cleanup()
+
+	// Verify document.xml was normalised to canonical w: prefix.
+	extracted, err := os.ReadFile(u.TempDir() + "/word/document.xml")
+	if err != nil {
+		t.Fatalf("read extracted document.xml: %v", err)
+	}
+	extractedStr := string(extracted)
+	if strings.Contains(extractedStr, "ns0:") {
+		t.Error("document.xml still contains non-canonical ns0: prefix after normalisation")
+	}
+	if !strings.Contains(extractedStr, "xmlns:w=") {
+		t.Error("document.xml missing canonical xmlns:w declaration after normalisation")
+	}
+
+	// Append content using all three common methods.
+	if err := u.AddHeading(1, "AppendedHeading", PositionEnd); err != nil {
+		t.Fatalf("AddHeading: %v", err)
+	}
+	if err := u.InsertParagraph(ParagraphOptions{Text: "AppendedParagraph", Position: PositionEnd}); err != nil {
+		t.Fatalf("InsertParagraph: %v", err)
+	}
+	if err := u.InsertTable(TableOptions{
+		Position: PositionEnd,
+		Columns:  []ColumnDefinition{{Title: "ColA"}, {Title: "ColB"}},
+		Rows:     [][]string{{"Cell1", "Cell2"}},
+	}); err != nil {
+		t.Fatalf("InsertTable: %v", err)
+	}
+
+	if err := u.Save(outputPath); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	docXML := readZipEntry(t, outputPath, "word/document.xml")
+
+	for _, want := range []string{"Template content", "AppendedHeading", "AppendedParagraph", "Cell1", "Cell2"} {
+		if !strings.Contains(docXML, want) {
+			t.Errorf("saved document.xml missing expected text %q", want)
+		}
+	}
+}
+
 func TestWriteZipFromDir(t *testing.T) {
 	// Create a minimal directory structure
 	tmpDir, err := os.MkdirTemp("", "zip-test-*")

@@ -111,6 +111,15 @@ func New(docxPath string) (*Updater, error) {
 		return nil, fmt.Errorf("normalize template: %w", err)
 	}
 
+	// Normalize non-standard WordprocessingML namespace prefixes (e.g. "ns0:")
+	// to the canonical "w:" prefix so all insertion logic works uniformly.
+	// Documents produced by python-docx or lxml may bind the WML namespace to
+	// a generated prefix such as "ns0" instead of the conventional "w".
+	if err := normalizeWMLNamespacePrefix(tempDir); err != nil {
+		os.RemoveAll(tempDir)
+		return nil, fmt.Errorf("normalize WML namespace: %w", err)
+	}
+
 	u := &Updater{originalPath: docxPath, tempDir: tempDir}
 
 	// Validate DOCX structure
@@ -389,6 +398,57 @@ func normalizeTemplateToDocument(tempDir string) error {
 	}
 	updated := strings.ReplaceAll(content, DotxMainContentType, DocxMainContentType)
 	return atomicWriteFile(ctPath, []byte(updated), 0o644)
+}
+
+// normalizeWMLNamespacePrefix rewrites word/document.xml so that the
+// WordprocessingML namespace is bound to the canonical "w" prefix.
+//
+// Tools such as python-docx and lxml sometimes produce DOCX files where
+// the WML namespace (http://schemas.openxmlformats.org/wordprocessingml/2006/main)
+// is declared with a generated prefix like "ns0" instead of the conventional "w".
+// All insertion, replacement, and layout functions in this library rely on the
+// canonical "w:" prefix (e.g. "</w:body>", "<w:sectPr", "<w:pPr>"). When a
+// non-standard prefix is present every one of those operations silently fails to
+// locate the expected markers and no new content is written into the document.
+//
+// The fix is a targeted string replacement performed once at load time:
+//   - xmlns:OLDPREFIX="...wordprocessingml..." → xmlns:w="...wordprocessingml..."
+//   - Every OLDPREFIX: occurrence → w:
+//
+// This is safe because XML namespace prefixes are local aliases — the document
+// semantics are identical with either prefix, and the canonical alias is what
+// Microsoft Word and this library both expect.
+//
+// It is a no-op when the document already uses the "w" prefix.
+func normalizeWMLNamespacePrefix(tempDir string) error {
+	const wmlNS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+
+	docPath := filepath.Join(tempDir, "word", "document.xml")
+	data, err := os.ReadFile(docPath)
+	if err != nil {
+		return fmt.Errorf("read document.xml: %w", err)
+	}
+
+	content := string(data)
+
+	// Detect the prefix actually used for the WML namespace.
+	prefix := detectWMLNamespacePrefix(content)
+	if prefix == "w" {
+		// Already canonical — nothing to do.
+		return nil
+	}
+
+	// Replace the namespace declaration: xmlns:OLDPREFIX="...wml..." → xmlns:w="...wml..."
+	oldDecl := `xmlns:` + prefix + `="` + wmlNS + `"`
+	newDecl := `xmlns:w="` + wmlNS + `"`
+	updated := strings.ReplaceAll(content, oldDecl, newDecl)
+
+	// Replace every element/attribute reference: OLDPREFIX: → w:
+	// We use the colon-terminated prefix so we don't accidentally match a
+	// longer prefix that happens to start with the same characters.
+	updated = strings.ReplaceAll(updated, prefix+":", "w:")
+
+	return atomicWriteFile(docPath, []byte(updated), 0o644)
 }
 
 // validateStructure checks that required OpenXML parts exist.
