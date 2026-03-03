@@ -268,6 +268,10 @@ func applyTableDefaults(opts TableOptions) TableOptions {
 	if opts.RowHeightRule == "" {
 		opts.RowHeightRule = RowHeightAuto
 	}
+	// Default row style to table style when not explicitly configured
+	if opts.RowStyleName == "" && opts.TableStyle != "" {
+		opts.RowStyleName = string(opts.TableStyle)
+	}
 
 	return opts
 }
