@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 )
 
 // InsertPageBreak inserts a page break into the document
@@ -217,8 +218,24 @@ func insertBreakBeforeAnchor(raw []byte, breakXML []byte, anchor string) ([]byte
 	return result, nil
 }
 
-// SetPageLayout sets the page layout for the current or last section in the document
-// This modifies the section properties (sectPr) of the document
+// detectWMLNamespacePrefix returns the XML namespace prefix bound to the
+// WordprocessingML namespace URI in the given document.xml content.
+// Standard Word output uses "w"; LibreOffice and python-docx may serialize
+// the same namespace with a generated prefix such as "ns0".
+func detectWMLNamespacePrefix(content string) string {
+	const wmlNS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+	re := regexp.MustCompile(`xmlns:([a-zA-Z][a-zA-Z0-9]*)="` + regexp.QuoteMeta(wmlNS) + `"`)
+	if m := re.FindStringSubmatch(content); len(m) > 1 {
+		return m[1]
+	}
+	return "w" // canonical default – always correct for MS Word documents
+}
+
+// SetPageLayout sets the page layout for the current or last section in the document.
+// It detects the WordprocessingML namespace prefix actually used in the document so
+// that it works correctly with files produced by MS Word ("w:"), LibreOffice ("ns0:"),
+// python-docx, and other conforming producers. MS Word canonical output is preferred
+// and the fallback when no explicit prefix mapping is found.
 func (u *Updater) SetPageLayout(pageLayout PageLayoutOptions) error {
 	if u == nil {
 		return fmt.Errorf("updater is nil")
@@ -233,42 +250,51 @@ func (u *Updater) SetPageLayout(pageLayout PageLayoutOptions) error {
 
 	content := string(raw)
 
-	// Find the last <w:sectPr> section (usually at the end of document before </w:body>)
-	sectPrStart := "<w:sectPr>"
-	sectPrEnd := "</w:sectPr>"
+	// Detect the WordprocessingML namespace prefix actually used in this document.
+	// Standard Word uses "w:", but tools like LibreOffice or python-docx may use "ns0:" or similar.
+	ns := detectWMLNamespacePrefix(content)
 
+	// Build tag strings for the detected prefix.
+	// We search for both forms: <ns:sectPr> (no attributes) and <ns:sectPr (with attributes
+	// such as w:rsidR="..."), which are both common in real-world documents.
+	sectPrNoAttr := fmt.Sprintf("<%s:sectPr>", ns)
+	sectPrWithAttr := fmt.Sprintf("<%s:sectPr ", ns)
+	sectPrEnd := fmt.Sprintf("</%s:sectPr>", ns)
+	bodyEnd := fmt.Sprintf("</%s:body>", ns)
+
+	// Find the last sectPr opening tag, considering both forms.
 	lastIdx := -1
-	searchPos := 0
-	for {
-		idx := bytes.Index([]byte(content[searchPos:]), []byte(sectPrStart))
-		if idx == -1 {
-			break
+	for _, tag := range []string{sectPrNoAttr, sectPrWithAttr} {
+		sp := 0
+		for {
+			idx := bytes.Index([]byte(content[sp:]), []byte(tag))
+			if idx == -1 {
+				break
+			}
+			absIdx := sp + idx
+			if absIdx > lastIdx {
+				lastIdx = absIdx
+			}
+			sp = absIdx + 1
 		}
-		lastIdx = searchPos + idx
-		searchPos = lastIdx + 1
 	}
 
 	if lastIdx == -1 {
-		// No sectPr found, create one before </w:body>
-		bodyEnd := "</w:body>"
+		// No sectPr found – insert one immediately before </body>.
 		bodyIdx := bytes.Index([]byte(content), []byte(bodyEnd))
 		if bodyIdx == -1 {
 			return fmt.Errorf("document body not found")
 		}
-
-		// Generate section properties XML
-		sectPrXML := generateSectionPropertiesXML(pageLayout)
+		sectPrXML := generateSectionPropertiesXMLWithPrefix(ns, pageLayout)
 		content = content[:bodyIdx] + sectPrXML + content[bodyIdx:]
 	} else {
-		// Update existing sectPr
+		// Replace the existing sectPr entirely.
 		endIdx := bytes.Index([]byte(content[lastIdx:]), []byte(sectPrEnd))
 		if endIdx == -1 {
-			return fmt.Errorf("malformed section properties")
+			return fmt.Errorf("malformed section properties: closing tag not found")
 		}
 		endIdx += lastIdx + len(sectPrEnd)
-
-		// Generate new section properties
-		sectPrXML := generateSectionPropertiesXML(pageLayout)
+		sectPrXML := generateSectionPropertiesXMLWithPrefix(ns, pageLayout)
 		content = content[:lastIdx] + sectPrXML + content[endIdx:]
 	}
 
@@ -280,34 +306,42 @@ func (u *Updater) SetPageLayout(pageLayout PageLayoutOptions) error {
 	return nil
 }
 
-// generateSectionPropertiesXML generates the <w:sectPr> XML for page layout
+// generateSectionPropertiesXML generates section properties XML using the canonical "w:" prefix.
+// This is the standard form produced by and expected by Microsoft Word.
 func generateSectionPropertiesXML(pageLayout PageLayoutOptions) string {
+	return generateSectionPropertiesXMLWithPrefix("w", pageLayout)
+}
+
+// generateSectionPropertiesXMLWithPrefix generates section properties XML using the given
+// namespace prefix, allowing compatibility with documents produced by LibreOffice or other
+// tools that may use a different prefix for the WordprocessingML namespace.
+func generateSectionPropertiesXMLWithPrefix(ns string, pageLayout PageLayoutOptions) string {
 	var buf bytes.Buffer
 
-	buf.WriteString("<w:sectPr>")
+	fmt.Fprintf(&buf, "<%s:sectPr>", ns)
 
 	// Page size with orientation
 	orientAttr := ""
 	if pageLayout.Orientation == OrientationLandscape {
-		orientAttr = ` w:orient="landscape"`
+		orientAttr = fmt.Sprintf(` %s:orient="landscape"`, ns)
 	}
-	buf.WriteString(fmt.Sprintf(`<w:pgSz w:w="%d" w:h="%d"%s/>`,
-		pageLayout.PageWidth, pageLayout.PageHeight, orientAttr))
+	fmt.Fprintf(&buf, `<%s:pgSz %s:w="%d" %s:h="%d"%s/>`,
+		ns, ns, pageLayout.PageWidth, ns, pageLayout.PageHeight, orientAttr)
 
 	// Page margins
-	buf.WriteString(fmt.Sprintf(`<w:pgMar w:top="%d" w:right="%d" w:bottom="%d" w:left="%d" w:header="%d" w:footer="%d" w:gutter="%d"/>`,
-		pageLayout.MarginTop,
-		pageLayout.MarginRight,
-		pageLayout.MarginBottom,
-		pageLayout.MarginLeft,
-		pageLayout.MarginHeader,
-		pageLayout.MarginFooter,
-		pageLayout.MarginGutter))
+	fmt.Fprintf(&buf, `<%s:pgMar %s:top="%d" %s:right="%d" %s:bottom="%d" %s:left="%d" %s:header="%d" %s:footer="%d" %s:gutter="%d"/>`,
+		ns, ns, pageLayout.MarginTop,
+		ns, pageLayout.MarginRight,
+		ns, pageLayout.MarginBottom,
+		ns, pageLayout.MarginLeft,
+		ns, pageLayout.MarginHeader,
+		ns, pageLayout.MarginFooter,
+		ns, pageLayout.MarginGutter)
 
 	// Default column settings
-	buf.WriteString(`<w:cols w:space="720"/>`)
+	fmt.Fprintf(&buf, `<%s:cols %s:space="720"/>`, ns, ns)
 
-	buf.WriteString("</w:sectPr>")
+	fmt.Fprintf(&buf, "</%s:sectPr>", ns)
 
 	return buf.String()
 }
