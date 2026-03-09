@@ -44,6 +44,10 @@ type CoreProperties struct {
 
 	// Revision number (version)
 	Revision string
+
+	// Language is the primary language of the document content (e.g. "en-US", "de-DE").
+	// Written as <dc:language> in docProps/core.xml.
+	Language string
 }
 
 // AppProperties represents application-specific document properties
@@ -131,6 +135,7 @@ func (u *Updater) SetCoreProperties(props CoreProperties) error {
 	content = u.updateCoreProperty(content, "cp:lastModifiedBy", props.LastModifiedBy)
 	content = u.updateCoreProperty(content, "cp:revision", props.Revision)
 	content = u.updateCoreProperty(content, "cp:contentStatus", props.ContentStatus)
+	content = u.updateCoreProperty(content, "dc:language", props.Language)
 
 	// Update dates with proper attributes
 	if !props.Created.IsZero() {
@@ -299,6 +304,7 @@ func (u *Updater) GetCoreProperties() (*CoreProperties, error) {
 	props.LastModifiedBy = u.extractCoreProperty(content, "cp:lastModifiedBy")
 	props.Revision = u.extractCoreProperty(content, "cp:revision")
 	props.ContentStatus = u.extractCoreProperty(content, "cp:contentStatus")
+	props.Language = u.extractCoreProperty(content, "dc:language")
 
 	// Parse dates
 	if created := u.extractCoreProperty(content, "dcterms:created"); created != "" {

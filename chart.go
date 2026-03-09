@@ -21,9 +21,9 @@ const (
 	// they are kept as distinct constants so callers do not need to set
 	// BarChartOptions.Direction manually.
 	ChartKindBar     ChartKind = "bar"
-	ChartKindLine    ChartKind = "lineChart"  // Line chart
-	ChartKindPie     ChartKind = "pieChart"   // Pie chart
-	ChartKindArea    ChartKind = "areaChart"  // Area chart
+	ChartKindLine    ChartKind = "lineChart"    // Line chart
+	ChartKindPie     ChartKind = "pieChart"     // Pie chart
+	ChartKindArea    ChartKind = "areaChart"    // Area chart
 	ChartKindScatter ChartKind = "scatterChart" // Scatter chart (XY chart)
 )
 
@@ -43,10 +43,10 @@ type ChartOptions struct {
 	ValueAxisTitle    string // Y-axis title (vertical axis) — backward compat, prefer ValueAxis.Title
 
 	// Data
-	Categories     []string        // Category labels (X-axis)
-	Series         []SeriesOptions // Data series with names and values
+	Categories []string        // Category labels (X-axis)
+	Series     []SeriesOptions // Data series with names and values
 	// Deprecated: Use Legend.Show instead.
-	ShowLegend     bool   // Show legend — backward compat, prefer Legend.Show
+	ShowLegend bool // Show legend — backward compat, prefer Legend.Show
 	// Deprecated: Use Legend.Position instead.
 	LegendPosition string // Legend position — backward compat, prefer Legend.Position
 
@@ -909,7 +909,7 @@ func (u *Updater) generateChartDrawingWithSize(chartIndex int, relId string, wid
 	anchorId := ChartAnchorIDBase + uint32(chartIndex)*ChartIDIncrement
 	editId := ChartEditIDBase + uint32(chartIndex)*ChartIDIncrement
 
-	template := `<w:p><w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0" wp14:anchorId="%08X" wp14:editId="%08X"><wp:extent cx="%d" cy="%d"/><wp:effectExtent l="0" t="0" r="15875" b="12700"/><wp:docPr id="%d" name="Chart %d"/><wp:cNvGraphicFramePr/><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart"><c:chart xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:id="%s"/></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`
+	template := `<w:p><w:r><w:drawing><wp:inline xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" distT="0" distB="0" distL="0" distR="0" wp14:anchorId="%08X" wp14:editId="%08X" xmlns:wp14="http://schemas.microsoft.com/office/word/2010/wordprocessingDrawing"><wp:extent cx="%d" cy="%d"/><wp:effectExtent l="0" t="0" r="15875" b="12700"/><wp:docPr id="%d" name="Chart %d"/><wp:cNvGraphicFramePr/><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart"><c:chart xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:id="%s"/></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`
 
 	return fmt.Appendf(nil, template, anchorId, editId, width, height, docPrId, chartIndex, relId), nil
 }

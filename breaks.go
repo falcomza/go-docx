@@ -218,15 +218,24 @@ func insertBreakBeforeAnchor(raw []byte, breakXML []byte, anchor string) ([]byte
 	return result, nil
 }
 
+// detectXMLNamespacePrefix returns the XML namespace prefix bound to nsURI in content,
+// or "" if the namespace is not declared at all in the content.
+func detectXMLNamespacePrefix(content, nsURI string) string {
+	re := regexp.MustCompile(`xmlns:([a-zA-Z][a-zA-Z0-9]*)="` + regexp.QuoteMeta(nsURI) + `"`)
+	if m := re.FindStringSubmatch(content); len(m) > 1 {
+		return m[1]
+	}
+	return ""
+}
+
 // detectWMLNamespacePrefix returns the XML namespace prefix bound to the
 // WordprocessingML namespace URI in the given document.xml content.
 // Standard Word output uses "w"; LibreOffice and python-docx may serialize
 // the same namespace with a generated prefix such as "ns0".
 func detectWMLNamespacePrefix(content string) string {
 	const wmlNS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
-	re := regexp.MustCompile(`xmlns:([a-zA-Z][a-zA-Z0-9]*)="` + regexp.QuoteMeta(wmlNS) + `"`)
-	if m := re.FindStringSubmatch(content); len(m) > 1 {
-		return m[1]
+	if p := detectXMLNamespacePrefix(content, wmlNS); p != "" {
+		return p
 	}
 	return "w" // canonical default – always correct for MS Word documents
 }

@@ -268,10 +268,12 @@ func applyTableDefaults(opts TableOptions) TableOptions {
 	if opts.RowHeightRule == "" {
 		opts.RowHeightRule = RowHeightAuto
 	}
-	// Default row style to table style when not explicitly configured
-	if opts.RowStyleName == "" && opts.TableStyle != "" {
-		opts.RowStyleName = string(opts.TableStyle)
-	}
+	// NOTE: RowStyleName must be a paragraph style (e.g. "Normal"), NOT a table
+	// style (e.g. "MediumShading1-Accent1"). Copying TableStyle into RowStyleName
+	// injects an undefined paragraph style into every data cell's <w:pStyle>,
+	// causing Word/LibreOffice to fail style resolution and render cell content
+	// as if it were outside the table. Leave RowStyleName empty when unset so
+	// cells use the document default paragraph style ("Normal").
 
 	return opts
 }
