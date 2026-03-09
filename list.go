@@ -66,6 +66,11 @@ func (u *Updater) ensureNumberingXML() error {
 		return fmt.Errorf("update relationships: %w", err)
 	}
 
+	// Ensure ListParagraph style is defined in styles.xml
+	if err := u.ensureListParagraphStyle(); err != nil {
+		return fmt.Errorf("ensure ListParagraph style: %w", err)
+	}
+
 	return nil
 }
 
@@ -359,4 +364,89 @@ func (u *Updater) ensureNumberingRelationship() error {
 	content = strings.Replace(content, "</Relationships>", numberingRel+"\n</Relationships>", 1)
 
 	return atomicWriteFile(relsPath, []byte(content), 0o644)
+}
+
+// ensureListParagraphStyle ensures that the ListParagraph style is defined in styles.xml
+// This prevents MS Word from showing corruption warnings about missing list styles
+func (u *Updater) ensureListParagraphStyle() error {
+	stylesPath := filepath.Join(u.tempDir, "word", "styles.xml")
+
+	// Read current styles.xml or create minimal one
+	data, err := os.ReadFile(stylesPath)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return fmt.Errorf("read styles.xml: %w", err)
+		}
+		// Create minimal styles.xml with ListParagraph style
+		content := generateMinimalStylesXMLWithListParagraph()
+		if err := atomicWriteFile(stylesPath, []byte(content), 0o644); err != nil {
+			return fmt.Errorf("write styles.xml: %w", err)
+		}
+		// Ensure styles relationship exists
+		if err := u.ensureStylesRelationship(); err != nil {
+			return fmt.Errorf("ensure styles relationship: %w", err)
+		}
+		return nil
+	}
+
+	content := string(data)
+
+	// Check if ListParagraph style already exists
+	if strings.Contains(content, `w:styleId="ListParagraph"`) {
+		return nil // Already present
+	}
+
+	// Add ListParagraph style before </w:styles>
+	listParagraphStyle := generateListParagraphStyleXML()
+	closingTag := "</w:styles>"
+	insertPos := strings.LastIndex(content, closingTag)
+	if insertPos == -1 {
+		return fmt.Errorf("invalid styles.xml: missing </w:styles>")
+	}
+
+	updated := content[:insertPos] + listParagraphStyle + "\n" + content[insertPos:]
+	return atomicWriteFile(stylesPath, []byte(updated), 0o644)
+}
+
+// generateListParagraphStyleXML creates the XML for the ListParagraph style
+func generateListParagraphStyleXML() string {
+	var buf bytes.Buffer
+	buf.WriteString("\n  <!-- List Paragraph Style - Required for proper list formatting -->\n")
+	buf.WriteString(`  <w:style w:type="paragraph" w:styleId="ListParagraph">`)
+	buf.WriteString("\n")
+	buf.WriteString(`    <w:name w:val="List Paragraph"/>`)
+	buf.WriteString("\n")
+	buf.WriteString(`    <w:basedOn w:val="Normal"/>`)
+	buf.WriteString("\n")
+	buf.WriteString(`    <w:qFormat/>`)
+	buf.WriteString("\n")
+	buf.WriteString(`    <w:pPr>`)
+	buf.WriteString("\n")
+	buf.WriteString(`      <w:ind w:left="720"/>`)
+	buf.WriteString("\n")
+	buf.WriteString(`      <w:contextualSpacing/>`)
+	buf.WriteString("\n")
+	buf.WriteString(`    </w:pPr>`)
+	buf.WriteString("\n")
+	buf.WriteString(`  </w:style>`)
+	buf.WriteString("\n")
+	return buf.String()
+}
+
+// generateMinimalStylesXMLWithListParagraph creates a minimal styles.xml with ListParagraph style
+func generateMinimalStylesXMLWithListParagraph() string {
+	var buf bytes.Buffer
+	buf.WriteString(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`)
+	buf.WriteString("\n")
+	buf.WriteString(`<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">`)
+	buf.WriteString("\n")
+	buf.WriteString(`  <w:style w:type="paragraph" w:default="1" w:styleId="Normal">`)
+	buf.WriteString("\n")
+	buf.WriteString(`    <w:name w:val="Normal"/>`)
+	buf.WriteString("\n")
+	buf.WriteString(`  </w:style>`)
+	buf.WriteString("\n")
+	buf.WriteString(generateListParagraphStyleXML())
+	buf.WriteString("</w:styles>")
+	return buf.String()
 }

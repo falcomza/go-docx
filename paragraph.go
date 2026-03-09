@@ -324,9 +324,16 @@ func generateParagraphXML(opts ParagraphOptions, listIDs listNumberingIDs, resta
 	// Add paragraph properties including style and list numbering
 	buf.WriteString("<w:pPr>")
 
-	// Add style if specified
-	if opts.Style != StyleNormal {
-		buf.WriteString(fmt.Sprintf(`<w:pStyle w:val="%s"/>`, xmlEscape(string(opts.Style))))
+	// Determine which style to apply
+	// If this is a list item and no explicit style is set, use ListParagraph style
+	styleToApply := opts.Style
+	if opts.ListType != "" && styleToApply == StyleNormal {
+		styleToApply = "ListParagraph"
+	}
+
+	// Add style if specified or determined
+	if styleToApply != StyleNormal {
+		buf.WriteString(fmt.Sprintf(`<w:pStyle w:val="%s"/>`, xmlEscape(string(styleToApply))))
 	}
 
 	if alignment, ok := paragraphAlignmentValue(opts.Alignment); ok {
