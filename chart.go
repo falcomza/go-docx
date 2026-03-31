@@ -127,6 +127,9 @@ func (u *Updater) InsertChart(opts ChartOptions) error {
 	if err := u.addContentTypeOverride(chartIndex); err != nil {
 		return fmt.Errorf("add content type: %w", err)
 	}
+	if err := u.addImageContentType(".xlsx", XLSXContentType); err != nil {
+		return fmt.Errorf("add workbook content type: %w", err)
+	}
 
 	return nil
 }

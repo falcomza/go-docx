@@ -2,6 +2,8 @@ package godocx_test
 
 import (
 	"archive/zip"
+	"encoding/xml"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -195,6 +197,8 @@ func TestInsertMultipleCharts(t *testing.T) {
 	if !strings.Contains(chart2XML, "Chart 2") {
 		t.Error("Chart 2 not found")
 	}
+
+	assertEmbeddedWorkbookContentTypes(t, outputPath)
 }
 
 func TestInsertChartInvalidData(t *testing.T) {
@@ -415,4 +419,81 @@ func listZipEntries(t *testing.T, zipPath string) []string {
 		entries = append(entries, f.Name)
 	}
 	return entries
+}
+
+type contentTypes struct {
+	XMLName   xml.Name              `xml:"Types"`
+	Defaults  []contentTypeDefault  `xml:"Default"`
+	Overrides []contentTypeOverride `xml:"Override"`
+}
+
+type contentTypeDefault struct {
+	Extension string `xml:"Extension,attr"`
+}
+
+type contentTypeOverride struct {
+	PartName string `xml:"PartName,attr"`
+}
+
+func assertEmbeddedWorkbookContentTypes(t *testing.T, zipPath string) {
+	t.Helper()
+
+	reader, err := zip.OpenReader(zipPath)
+	if err != nil {
+		t.Fatalf("open zip: %v", err)
+	}
+	defer reader.Close()
+
+	var contentTypesXML []byte
+	for _, file := range reader.File {
+		if file.Name != "[Content_Types].xml" {
+			continue
+		}
+
+		rc, openErr := file.Open()
+		if openErr != nil {
+			t.Fatalf("open [Content_Types].xml: %v", openErr)
+		}
+		contentTypesXML, err = io.ReadAll(rc)
+		rc.Close()
+		if err != nil {
+			t.Fatalf("read [Content_Types].xml: %v", err)
+		}
+		break
+	}
+
+	if len(contentTypesXML) == 0 {
+		t.Fatal("[Content_Types].xml not found")
+	}
+
+	var parsed contentTypes
+	if err := xml.Unmarshal(contentTypesXML, &parsed); err != nil {
+		t.Fatalf("unmarshal [Content_Types].xml: %v", err)
+	}
+
+	defaults := make(map[string]bool, len(parsed.Defaults))
+	for _, def := range parsed.Defaults {
+		defaults[strings.ToLower(def.Extension)] = true
+	}
+
+	overrides := make(map[string]bool, len(parsed.Overrides))
+	for _, override := range parsed.Overrides {
+		overrides[strings.TrimPrefix(override.PartName, "/")] = true
+	}
+
+	for _, file := range reader.File {
+		if !strings.HasPrefix(file.Name, "word/embeddings/") || strings.ToLower(filepath.Ext(file.Name)) != ".xlsx" {
+			continue
+		}
+		if overrides[file.Name] {
+			continue
+		}
+
+		ext := strings.TrimPrefix(strings.ToLower(filepath.Ext(file.Name)), ".")
+		if ext != "" && defaults[ext] {
+			continue
+		}
+
+		t.Fatalf("missing content type declaration for %s", file.Name)
+	}
 }
