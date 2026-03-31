@@ -264,6 +264,31 @@ type ImageOptions struct {
 - Only `Height` set → Calculate width proportionally
 - Neither set → Use original image dimensions
 
+### EmbeddedObjectOptions
+
+Options for inserting an OLE embedded object.
+
+```go
+type EmbeddedObjectOptions struct {
+    FilePath  string         // Path to file to embed; mutually exclusive with FileBytes
+    FileBytes []byte         // Raw file bytes; alternative to FilePath
+    FileName  string         // Display name; auto-derived from FilePath if empty
+    ProgID    string         // OLE ProgID, default "Excel.Sheet.12"
+    Width     int            // Display width in points, default 95
+    Height    int            // Display height in points, default 75
+    IconPath  string         // Optional custom icon PNG path
+    IconBytes []byte         // Optional custom icon PNG bytes (priority over IconPath)
+    Position  InsertPosition // Where to insert
+    Anchor    string         // Required for PositionAfterText / PositionBeforeText
+}
+```
+
+**Supported ProgIDs:**
+| ProgID | Application |
+|--------|-------------|
+| `Excel.Sheet.12` | Excel 2007+ (.xlsx) — default |
+| `Excel.Sheet.8` | Excel 97-2003 (.xls) |
+
 ### FindOptions
 
 Text search configuration.
@@ -1200,6 +1225,50 @@ updater.InsertImage(godocx.ImageOptions{
     Path:     "./assets/logo.png",
     Width:    300,
     Position: godocx.PositionBeginning,
+})
+```
+
+### Embedded Object Operations
+
+#### InsertEmbeddedObject
+
+```go
+func (u *Updater) InsertEmbeddedObject(opts EmbeddedObjectOptions) error
+```
+
+Inserts an OLE embedded object into the document as a double-clickable inline icon. When opened in Word or LibreOffice Writer, the user can double-click the icon to open the embedded file in the associated application (e.g., Excel for `.xlsx` files).
+
+**Parameters:**
+- `opts.FilePath`: Path to the file to embed. Mutually exclusive with `FileBytes`.
+- `opts.FileBytes`: Raw bytes of the file to embed. Used for in-memory files.
+- `opts.FileName`: Display name for the embedded file. Auto-derived from `FilePath` if empty.
+- `opts.ProgID`: OLE program identifier. Default: `"Excel.Sheet.12"` (Excel 2007+).
+- `opts.Width`: Display width in points. Default: `95`.
+- `opts.Height`: Display height in points. Default: `75`.
+- `opts.IconPath`: Path to a custom PNG icon image. Falls back to built-in Excel icon if unreadable.
+- `opts.IconBytes`: Raw PNG icon bytes. Takes priority over `IconPath`.
+- `opts.Position`: Where to insert the object (`PositionEnd`, `PositionBeginning`, `PositionAfterText`, `PositionBeforeText`).
+- `opts.Anchor`: Anchor text required when `Position` is `PositionAfterText` or `PositionBeforeText`.
+
+**Returns:**
+- `error`: If neither `FilePath` nor `FileBytes` is set, `Anchor` is missing when required, or an I/O failure occurs.
+
+**Example:**
+```go
+// Embed from disk — uses built-in Excel icon
+err := updater.InsertEmbeddedObject(godocx.EmbeddedObjectOptions{
+    FilePath: "./data/report.xlsx",
+    Position: godocx.PositionEnd,
+})
+
+// Embed from bytes with custom size
+err = updater.InsertEmbeddedObject(godocx.EmbeddedObjectOptions{
+    FileBytes: xlsxBytes,
+    FileName:  "quarterly_report.xlsx",
+    Width:     120,
+    Height:    90,
+    Position:  godocx.PositionAfterText,
+    Anchor:    "See attached:",
 })
 ```
 

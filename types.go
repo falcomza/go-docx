@@ -41,6 +41,45 @@ type ImageOptions struct {
 	Caption *CaptionOptions
 }
 
+// EmbeddedObjectOptions defines options for inserting an OLE embedded object
+// (e.g., an Excel workbook that can be opened by double-clicking in Word).
+type EmbeddedObjectOptions struct {
+	// FilePath is the path to the file to embed (e.g., .xlsx).
+	// Exactly one of FilePath or FileBytes must be provided.
+	FilePath string
+
+	// FileBytes is the raw content of the file to embed.
+	// Used when the file is already in memory.
+	FileBytes []byte
+
+	// FileName is the logical name stored in the document (e.g., "data.xlsx").
+	// If empty, it is derived from FilePath; defaults to "embedded.xlsx".
+	FileName string
+
+	// ProgID is the OLE program identifier. Default: "Excel.Sheet.12".
+	ProgID string
+
+	// Width is the display width in points. Default: 95.
+	Width int
+
+	// Height is the display height in points. Default: 75.
+	Height int
+
+	// IconPath is an optional path to a PNG icon image.
+	// Falls back to the built-in Excel icon if empty or unreadable.
+	IconPath string
+
+	// IconBytes is optional raw bytes for a PNG icon image.
+	// Takes priority over IconPath.
+	IconBytes []byte
+
+	// Position controls where in the document the object is inserted.
+	Position InsertPosition
+
+	// Anchor is required when Position is PositionAfterText or PositionBeforeText.
+	Anchor string
+}
+
 // ImageDimensions stores image width and height in pixels
 type ImageDimensions struct {
 	Width  int

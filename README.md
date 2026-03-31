@@ -13,6 +13,7 @@ A powerful Go library for programmatically manipulating Microsoft Word (DOCX) do
 - **Images**: Add images with automatic proportional sizing and flexible positioning
 - **Hyperlinks & Bookmarks**: External URLs, internal links, and bookmark management
 - **Lists**: Bullet and numbered lists with nesting support
+- **Embedded Objects**: Embed Excel workbooks (and other OLE files) as interactive inline objects
 
 📊 **Charts**
 - **Chart Updates**: Modify existing chart data with automatic Excel workbook synchronization
@@ -523,6 +524,40 @@ u.Save("with_images.docx")
 
 **Proportional sizing:** Specify only `Width` (height auto-calculated), only `Height` (width auto-calculated), both (used as-is), or neither (actual image dimensions). Supported formats: PNG, JPEG, GIF, BMP, TIFF.
 
+### Embedded Object Insertion
+
+Embed an Excel workbook (or other OLE-supported file) as a double-clickable object:
+
+```go
+u, _ := godocx.New("document.docx")
+defer u.Cleanup()
+
+// Embed from file path (uses built-in Excel icon)
+u.InsertEmbeddedObject(godocx.EmbeddedObjectOptions{
+    FilePath: "data/report.xlsx",
+    Position: godocx.PositionEnd,
+})
+
+// Embed from bytes with custom display size
+u.InsertEmbeddedObject(godocx.EmbeddedObjectOptions{
+    FileBytes: xlsxBytes,
+    FileName:  "quarterly_report.xlsx",
+    Width:     120,
+    Height:    90,
+    Position:  godocx.PositionAfterText,
+    Anchor:    "See attached data:",
+})
+
+// Embed with a custom icon image
+u.InsertEmbeddedObject(godocx.EmbeddedObjectOptions{
+    FilePath:  "data/report.xlsx",
+    IconPath:  "assets/excel_icon.png",
+    Position:  godocx.PositionEnd,
+})
+
+u.Save("with_embedded.docx")
+```
+
 ### Page and Section Breaks
 
 ```go
@@ -809,6 +844,11 @@ u.Save("with_lists.docx")
 |--------|-------------|
 | `InsertImage(opts ImageOptions)` | Insert image with proportional sizing |
 
+### Embedded Object Operations
+| Method | Description |
+|--------|-------------|
+| `InsertEmbeddedObject(opts EmbeddedObjectOptions)` | Embed an OLE object (e.g., Excel workbook) as a double-clickable inline icon |
+
 ### Hyperlink & Bookmark Operations
 | Method | Description |
 |--------|-------------|
@@ -889,6 +929,7 @@ u.Save("with_lists.docx")
 ├── merge.go             # Table cell merging (horizontal/vertical)
 ├── paragraph.go         # Paragraph and text insertion
 ├── image.go             # Image insertion with proportional sizing
+├── embed.go             # OLE embedded object insertion
 ├── toc.go               # Table of Contents generation
 ├── styles.go            # Custom style definitions
 ├── watermark.go         # Text watermarks via VML
@@ -997,6 +1038,7 @@ DOCX files are ZIP archives containing XML files. This library:
 - [x] Table insertion with cell merging
 - [x] Paragraph and text insertion with formatting
 - [x] Image insertion with proportional sizing
+- [x] Embedded OLE objects (Excel workbooks, interactive double-click)
 - [x] Header/footer manipulation
 - [x] Table of Contents generation
 - [x] Custom styles API
