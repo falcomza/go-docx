@@ -2,6 +2,7 @@ package godocx_test
 
 import (
 	"archive/zip"
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -870,6 +871,195 @@ func TestInsertTableConditionalWithRowStyle(t *testing.T) {
 	if !strings.Contains(docXML, `w:fill="E7E6E6"`) {
 		t.Error("Default gray background not found for non-matching cells")
 	}
+}
+
+// TestInsertTableDefaultStylesInjectedIntoStylesXML verifies that the default
+// paragraph styles "Table Header" (header cells) and "Table" (data cells) are
+// automatically injected into styles.xml so LibreOffice/Word can resolve them.
+// Without this, both applications collapse the table to unstyled plain text.
+func TestInsertTableDefaultStylesInjectedIntoStylesXML(t *testing.T) {
+	tempDir := t.TempDir()
+	inputPath := filepath.Join(tempDir, "input.docx")
+	outputPath := filepath.Join(tempDir, "output.docx")
+
+	if err := os.WriteFile(inputPath, buildFixtureDocx(t), 0o644); err != nil {
+		t.Fatalf("write input fixture: %v", err)
+	}
+
+	u, err := godocx.New(inputPath)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer u.Cleanup()
+
+	err = u.InsertTable(godocx.TableOptions{
+		Position: godocx.PositionEnd,
+		Columns: []godocx.ColumnDefinition{
+			{Title: "Name"},
+			{Title: "Value"},
+		},
+		Rows: [][]string{
+			{"alpha", "1"},
+			{"beta", "2"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("InsertTable: %v", err)
+	}
+
+	if err := u.Save(outputPath); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	// styles.xml must exist and must define both default style IDs.
+	stylesXML := readZipEntry(t, outputPath, "word/styles.xml")
+	if stylesXML == "" {
+		t.Fatal("word/styles.xml is absent from output DOCX")
+	}
+	for _, id := range []string{"Table Header", "Table"} {
+		attr := fmt.Sprintf(`w:styleId="%s"`, id)
+		if !strings.Contains(stylesXML, attr) {
+			t.Errorf("styles.xml missing style definition for %q (looked for %s)", id, attr)
+		}
+	}
+
+	// document.xml must still reference those styles in cells.
+	docXML := readZipEntry(t, outputPath, "word/document.xml")
+	if !strings.Contains(docXML, `<w:pStyle w:val="Table Header"/>`) {
+		t.Error("document.xml missing 'Table Header' pStyle on header cells")
+	}
+	if !strings.Contains(docXML, `<w:pStyle w:val="Table"/>`) {
+		t.Error("document.xml missing 'Table' pStyle on data cells")
+	}
+}
+
+// TestInsertTableCustomStyleNamesAutoInjected verifies that caller-supplied
+// custom style names that don't exist in styles.xml are also auto-injected.
+func TestInsertTableCustomStyleNamesAutoInjected(t *testing.T) {
+	tempDir := t.TempDir()
+	inputPath := filepath.Join(tempDir, "input.docx")
+	outputPath := filepath.Join(tempDir, "output.docx")
+
+	if err := os.WriteFile(inputPath, buildFixtureDocx(t), 0o644); err != nil {
+		t.Fatalf("write input fixture: %v", err)
+	}
+
+	u, err := godocx.New(inputPath)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer u.Cleanup()
+
+	err = u.InsertTable(godocx.TableOptions{
+		Position: godocx.PositionEnd,
+		Columns: []godocx.ColumnDefinition{
+			{Title: "Col"},
+		},
+		Rows: [][]string{
+			{"row1"},
+		},
+		HeaderStyleName: "MyCustomHeader",
+		RowStyleName:    "MyCustomRow",
+	})
+	if err != nil {
+		t.Fatalf("InsertTable: %v", err)
+	}
+
+	if err := u.Save(outputPath); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	stylesXML := readZipEntry(t, outputPath, "word/styles.xml")
+	for _, id := range []string{"MyCustomHeader", "MyCustomRow"} {
+		attr := fmt.Sprintf(`w:styleId="%s"`, id)
+		if !strings.Contains(stylesXML, attr) {
+			t.Errorf("styles.xml missing auto-injected style %q", id)
+		}
+	}
+}
+
+// TestInsertTableNoInjectionWhenStylesExist verifies that if a style ID is
+// already present in styles.xml it is not duplicated.
+func TestInsertTableNoInjectionWhenStylesExist(t *testing.T) {
+	tempDir := t.TempDir()
+	inputPath := filepath.Join(tempDir, "input.docx")
+	outputPath := filepath.Join(tempDir, "output.docx")
+
+	// Build a fixture that already has "Table Header" and "Table" defined.
+	docx := buildFixtureDocxWithStyles(t, []string{"Table Header", "Table"})
+	if err := os.WriteFile(inputPath, docx, 0o644); err != nil {
+		t.Fatalf("write input fixture: %v", err)
+	}
+
+	u, err := godocx.New(inputPath)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer u.Cleanup()
+
+	if err := u.InsertTable(godocx.TableOptions{
+		Position: godocx.PositionEnd,
+		Columns:  []godocx.ColumnDefinition{{Title: "X"}},
+		Rows:     [][]string{{"y"}},
+	}); err != nil {
+		t.Fatalf("InsertTable: %v", err)
+	}
+
+	if err := u.Save(outputPath); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	stylesXML := readZipEntry(t, outputPath, "word/styles.xml")
+	// Each style ID must appear exactly once (no duplicates).
+	for _, id := range []string{"Table Header", "Table"} {
+		attr := fmt.Sprintf(`w:styleId="%s"`, id)
+		count := strings.Count(stylesXML, attr)
+		if count != 1 {
+			t.Errorf("style %q appears %d times in styles.xml, want exactly 1", id, count)
+		}
+	}
+}
+
+// buildFixtureDocxWithStyles builds a minimal DOCX that already contains
+// paragraph style definitions for each name in styleIDs.
+func buildFixtureDocxWithStyles(t *testing.T, styleIDs []string) []byte {
+	t.Helper()
+
+	var styleEntries strings.Builder
+	for _, id := range styleIDs {
+		styleEntries.WriteString(fmt.Sprintf(
+			`<w:style w:type="paragraph" w:styleId="%s"><w:name w:val="%s"/></w:style>`,
+			id, id,
+		))
+	}
+	stylesXML := `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+		`<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">` +
+		styleEntries.String() +
+		`</w:styles>`
+
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	addZipEntry(t, zw, "[Content_Types].xml",
+		`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`+
+			`<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">`+
+			`<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>`+
+			`<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>`+
+			`</Types>`)
+	addZipEntry(t, zw, "word/document.xml",
+		`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`+
+			`<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">`+
+			`<w:body><w:p><w:r><w:t>Hello</w:t></w:r></w:p></w:body>`+
+			`</w:document>`)
+	addZipEntry(t, zw, "word/styles.xml", stylesXML)
+	addZipEntry(t, zw, "word/_rels/document.xml.rels",
+		`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`+
+			`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">`+
+			`<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>`+
+			`</Relationships>`)
+	if err := zw.Close(); err != nil {
+		t.Fatalf("close zip: %v", err)
+	}
+	return buf.Bytes()
 }
 
 func buildFixtureDocxForTableUpdate(t *testing.T) *godocx.Updater {

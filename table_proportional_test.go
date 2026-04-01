@@ -137,6 +137,19 @@ func TestTableProportionalColumnWidths(t *testing.T) {
 			gridColumns[0], gridColumns[0], gridColumns[2])
 	}
 
+	// Header row must repeat on each page (default behaviour)
+	if !strings.Contains(docXML, "<w:tblHeader/>") {
+		t.Error("expected <w:tblHeader/> in header row (RepeatHeader default is true)")
+	}
+	// Header cells must carry the "Table Header" paragraph style
+	if !strings.Contains(docXML, `<w:pStyle w:val="Table Header"/>`) {
+		t.Error("expected 'Table Header' paragraph style on header cells")
+	}
+	// Data cells must carry the "Table" paragraph style
+	if !strings.Contains(docXML, `<w:pStyle w:val="Table"/>`) {
+		t.Error("expected 'Table' paragraph style on data cells")
+	}
+
 	t.Logf("Proportional widths - ID: %d, Description: %d, Price: %d", gridColumns[0], gridColumns[1], gridColumns[2])
 }
 

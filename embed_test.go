@@ -368,6 +368,17 @@ func TestInsertEmbeddedObjectDrawAspectIcon(t *testing.T) {
 	if !strings.Contains(doc, `DrawAspect="Icon"`) {
 		t.Error("document.xml missing DrawAspect=\"Icon\" attribute - object will not display as icon")
 	}
+	// Object must be embedded (not linked): Type="Embed" and no Type="Link".
+	if !strings.Contains(doc, `Type="Embed"`) {
+		t.Error("document.xml missing Type=\"Embed\" - object is not embedded")
+	}
+	if strings.Contains(doc, `Type="Link"`) {
+		t.Error("document.xml contains Type=\"Link\" - object must not be a linked file")
+	}
+	// No hyperlink wrapper around the OLE object.
+	if strings.Contains(doc, "<w:hyperlink") {
+		t.Error("document.xml contains <w:hyperlink> around embedded object - icon must be inserted without a link")
+	}
 }
 
 // requireEntry asserts that the named entry exists in the entries slice.
