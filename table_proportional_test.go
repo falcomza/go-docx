@@ -11,24 +11,20 @@ import (
 
 // extractGridColumnWidths extracts grid column widths from document XML
 func extractGridColumnWidths(docXML string) []int {
-	tblStart := strings.Index(docXML, "<w:tbl>")
-	if tblStart == -1 {
+	// Find the LAST table's grid, not the first
+	// This is important for tests that insert tables into templates with existing tables
+	lastTblGridStart := strings.LastIndex(docXML, "<w:tblGrid>")
+	if lastTblGridStart == -1 {
 		return nil
 	}
 
-	tblGridStart := strings.Index(docXML[tblStart:], "<w:tblGrid>")
-	if tblGridStart == -1 {
-		return nil
-	}
-	tblGridStart += tblStart
-
-	tblGridEnd := strings.Index(docXML[tblGridStart:], "</w:tblGrid>")
+	tblGridEnd := strings.Index(docXML[lastTblGridStart:], "</w:tblGrid>")
 	if tblGridEnd == -1 {
 		return nil
 	}
-	tblGridEnd += tblGridStart
+	tblGridEnd += lastTblGridStart
 
-	gridXML := docXML[tblGridStart : tblGridEnd+len("</w:tblGrid>")]
+	gridXML := docXML[lastTblGridStart : tblGridEnd+len("</w:tblGrid>")]
 	return extractGridColumns(gridXML)
 }
 
