@@ -33,7 +33,14 @@ func (u *Updater) ensureNumberingXML() ([]byte, error) {
 
 	var finalContent []byte
 	if data, err := os.ReadFile(numberingPath); err == nil {
-		content := string(data)
+		// Normalize invalid w:lvlJc values emitted by LibreOffice.
+		// OOXML ST_Jc only accepts "left"/"right"; LibreOffice uses CSS logical "start"/"end".
+		content := normalizeLvlJcValues(string(data))
+		if content != string(data) {
+			if err := atomicWriteFile(numberingPath, []byte(content), 0o644); err != nil {
+				return nil, fmt.Errorf("normalize numbering.xml: %w", err)
+			}
+		}
 
 		if bulletID, numberedID, ok := extractDocxUpdateNumberingIDs(content); ok {
 			u.setListNumberingIDs(bulletID, numberedID)
@@ -191,20 +198,35 @@ func extractDocxUpdateNumberingIDs(content string) (int, int, bool) {
 	return bulletID, numberedID, true
 }
 
-// appendToNumberingXML inserts generated XML before the closing </w:numbering> tag.
+// appendToNumberingXML inserts generated XML (which may contain both <w:abstractNum> and
+// <w:num> elements) at the correct schema-compliant position.
+//
+// OOXML CT_Numbering (ECMA-376 §17.9.17) requires all <w:abstractNum> elements to appear
+// before any <w:num> elements. To satisfy this constraint the generated block is inserted
+// before the first existing <w:num> element (falling back to before </w:numbering> when
+// there are no existing <w:num> entries).
+//
 // generateFn receives the next available abstractNumId and numId and returns the XML to insert.
 // It returns the updated content and the two IDs that were allocated (abstractID, numID).
 func appendToNumberingXML(content string, generateFn func(abstractID, numID int) string) (string, int, int, error) {
 	closingTag := "</w:numbering>"
-	insertPos := strings.LastIndex(content, closingTag)
-	if insertPos == -1 {
-		return "", 0, 0, fmt.Errorf("invalid numbering.xml: missing </w:numbering>")
-	}
 
 	abstractID := findMaxXMLAttributeInt(content, abstractNumIDPattern) + 1
 	numID := findMaxXMLAttributeInt(content, numIDPattern) + 1
 
 	definitions := generateFn(abstractID, numID)
+
+	// Insert before the first <w:num so that any new <w:abstractNum> entries in definitions
+	// precede all existing <w:num> entries — required by the OOXML schema.
+	insertPos := strings.Index(content, "<w:num ")
+	if insertPos == -1 {
+		// No existing <w:num>; fall back to just before </w:numbering>.
+		insertPos = strings.LastIndex(content, closingTag)
+	}
+	if insertPos == -1 {
+		return "", 0, 0, fmt.Errorf("invalid numbering.xml: missing </w:numbering>")
+	}
+
 	updated := content[:insertPos] + definitions + "\n" + content[insertPos:]
 	return updated, abstractID, numID, nil
 }
@@ -579,4 +601,14 @@ func (u *Updater) ensureHeadingOutlineNumbering() (int, error) {
 
 	u.headingNumID = numID
 	return numID, nil
+}
+
+// normalizeLvlJcValues replaces invalid w:lvlJc values emitted by LibreOffice.
+// OOXML ST_Jc only accepts "left" and "right"; LibreOffice uses CSS logical
+// keywords "start" and "end". This normalisation is applied once when numbering.xml
+// is first read so that the generated document passes Microsoft365 schema validation.
+func normalizeLvlJcValues(content string) string {
+	content = strings.ReplaceAll(content, `<w:lvlJc w:val="start"/>`, `<w:lvlJc w:val="left"/>`)
+	content = strings.ReplaceAll(content, `<w:lvlJc w:val="end"/>`, `<w:lvlJc w:val="right"/>`)
+	return content
 }

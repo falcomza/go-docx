@@ -389,17 +389,19 @@ func generateTableXML(opts TableOptions) []byte {
 	} else {
 		buf.WriteString(fmt.Sprintf(`<w:tblW w:w="%d" w:type="%s"/>`, opts.TableWidth, opts.TableWidthType))
 	}
+
+	// Table alignment — must follow tblW and precede tblBorders (ECMA-376 §17.4.59 CT_TblPr sequence)
+	buf.WriteString(fmt.Sprintf(`<w:jc w:val="%s"/>`, opts.TableAlignment))
+
+	// Table borders
+	buf.WriteString(generateTableBorders(opts))
+
+	// Table layout — must follow tblBorders (ECMA-376 §17.4.59 CT_TblPr sequence)
 	if opts.AutoFit {
 		buf.WriteString(`<w:tblLayout w:type="autofit"/>`)
 	} else {
 		buf.WriteString(`<w:tblLayout w:type="fixed"/>`)
 	}
-
-	// Table alignment
-	buf.WriteString(fmt.Sprintf(`<w:jc w:val="%s"/>`, opts.TableAlignment))
-
-	// Table borders
-	buf.WriteString(generateTableBorders(opts))
 
 	// Cell margins (padding)
 	buf.WriteString(fmt.Sprintf(`<w:tblCellMar>
@@ -714,13 +716,13 @@ func generateCell(content string, align CellAlignment, vAlign VerticalAlignment,
 	// Cell properties
 	buf.WriteString("<w:tcPr>")
 
-	// Vertical alignment
-	buf.WriteString(fmt.Sprintf(`<w:vAlign w:val="%s"/>`, vAlign))
-
-	// Background color
+	// Background color — must precede vAlign in CT_TcPr sequence (ECMA-376 §17.4.62: shd before vAlign)
 	if background != "" {
 		buf.WriteString(fmt.Sprintf(`<w:shd w:val="clear" w:color="auto" w:fill="%s"/>`, background))
 	}
+
+	// Vertical alignment
+	buf.WriteString(fmt.Sprintf(`<w:vAlign w:val="%s"/>`, vAlign))
 
 	buf.WriteString("</w:tcPr>")
 

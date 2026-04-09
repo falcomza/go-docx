@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -124,6 +125,14 @@ func New(docxPath string) (*Updater, error) {
 	if err := normalizeWMLNamespacePrefix(tempDir); err != nil {
 		os.RemoveAll(tempDir)
 		return nil, fmt.Errorf("normalize WML namespace: %w", err)
+	}
+
+	// Normalize invalid w:characterSet values in fontTable.xml.
+	// LibreOffice emits IANA charset names (e.g. "utf-8", "windows-1252") but
+	// OOXML ST_UcharHexNumber requires 2-digit Windows charset IDs in hex.
+	if err := normalizeFontTableCharsets(tempDir); err != nil {
+		os.RemoveAll(tempDir)
+		return nil, fmt.Errorf("normalize fontTable charsets: %w", err)
 	}
 
 	u := &Updater{originalPath: docxPath, tempDir: tempDir}
@@ -465,6 +474,35 @@ func normalizeWMLNamespacePrefix(tempDir string) error {
 		return nil
 	}
 	return atomicWriteFile(docPath, []byte(content), 0o644)
+}
+
+// normalizeFontTableCharsets rewrites invalid w:characterSet values in fontTable.xml.
+// LibreOffice emits IANA charset names (e.g. "utf-8", "windows-1252") but OOXML
+// ST_UcharHexNumber requires 2-digit uppercase hex Windows charset IDs.
+// Unknown IANA names are replaced with "00" (ANSI_CHARSET — safe fallback).
+func normalizeFontTableCharsets(tempDir string) error {
+	ftPath := filepath.Join(tempDir, "word", "fontTable.xml")
+	data, err := os.ReadFile(ftPath)
+	if os.IsNotExist(err) {
+		return nil // no fontTable — nothing to normalize
+	}
+	if err != nil {
+		return fmt.Errorf("read fontTable.xml: %w", err)
+	}
+
+	content := string(data)
+	// LibreOffice adds a non-standard w:characterSet="..." attribute alongside the
+	// already-valid w:val="XX" attribute on <w:charset> elements. The validator
+	// rejects the IANA name values AND having two w:val attributes if we naively
+	// replace it. The correct fix is to simply strip the extra attribute entirely:
+	// the existing w:val already carries the correct Windows charset ID.
+	reCharset := regexp.MustCompile(`\s+w:characterSet="[^"]*"`)
+	normalized := reCharset.ReplaceAllString(content, "")
+
+	if normalized == content {
+		return nil
+	}
+	return atomicWriteFile(ftPath, []byte(normalized), 0o644)
 }
 
 // validateStructure checks that required OpenXML parts exist.
