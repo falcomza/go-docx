@@ -24,6 +24,12 @@ type Updater struct {
 
 	bulletListNumID   int
 	numberedListNumID int
+	headingNumID      int
+
+	// headingNumberingDisabled suppresses <w:numPr> injection in AddHeading so that
+	// the document's own heading styles (e.g. from an uploaded template) control all
+	// formatting. When true, AddHeading emits only <w:pStyle> for the heading level.
+	headingNumberingDisabled bool
 }
 
 // NewBlank creates a new blank DOCX document from scratch without requiring a template.

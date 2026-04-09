@@ -97,6 +97,11 @@ type RunOptions struct {
 	// as a <w:hyperlink> element. Hyperlinks are always underlined; Color defaults
 	// to "0563C1" (Word's standard blue) but can be overridden by setting Color.
 	URL string
+
+	// BookmarkRef sets an internal bookmark reference on this run. When non-empty the run
+	// is emitted as a <w:hyperlink w:anchor="..."> element linking to a bookmark within
+	// the same document. Like URL hyperlinks, these are underlined and use Word blue by default.
+	BookmarkRef string
 }
 
 // ParagraphOptions defines options for paragraph insertion
@@ -123,6 +128,17 @@ type ParagraphOptions struct {
 	ListType    ListType // Type of list (bullet or numbered)
 	ListLevel   int      // Indentation level (0-8, default 0)
 	ListRestart bool     // Restart numbered list at 1 (creates a fresh numId with startOverride)
+
+	// NumID/NumLevel provide a direct <w:numPr> override without requiring a ListType.
+	// When NumID > 0 a <w:numPr> is emitted with the given numId and ilvl.
+	NumID    int // numId (0 = not set)
+	NumLevel int // ilvl, 0-based
+
+	// OverrideNumID, when > 0, overrides the numId that ListType would normally select.
+	// Use this to ensure all items in a restarted numbered-list sequence share the same
+	// fresh numId (allocated via AllocateRestartNumID) so their counters stay in sync.
+	// Has no effect unless ListType == ListTypeNumbered.
+	OverrideNumID int
 
 	// Pagination control
 	KeepNext  bool // Keep this paragraph on the same page as the next (prevents orphaned headings)
@@ -153,7 +169,7 @@ func (u *Updater) InsertParagraph(opts ParagraphOptions) error {
 
 	// Ensure numbering.xml exists if using lists
 	if opts.ListType != "" {
-		if err := u.ensureNumberingXML(); err != nil {
+		if _, err := u.ensureNumberingXML(); err != nil {
 			return fmt.Errorf("ensure numbering: %w", err)
 		}
 		listIDs = u.getListNumberingIDs()
@@ -227,7 +243,7 @@ func (u *Updater) InsertParagraphs(paragraphs []ParagraphOptions) error {
 	// Ensure numbering.xml exists once if any paragraph uses a list.
 	for _, opts := range paragraphs {
 		if opts.ListType != "" {
-			if err := u.ensureNumberingXML(); err != nil {
+			if _, err := u.ensureNumberingXML(); err != nil {
 				return fmt.Errorf("ensure numbering: %w", err)
 			}
 			break
@@ -312,6 +328,16 @@ func (u *Updater) InsertParagraphs(paragraphs []ParagraphOptions) error {
 	return nil
 }
 
+// writeNumPrXML writes a <w:numPr> block with the given level (ilvl) and numId.
+// level is clamped to [0, 8].
+func writeNumPrXML(buf *bytes.Buffer, level, numID int) {
+	level = min(max(level, 0), 8)
+	buf.WriteString("<w:numPr>")
+	fmt.Fprintf(buf, `<w:ilvl w:val="%d"/>`, level)
+	fmt.Fprintf(buf, `<w:numId w:val="%d"/>`, numID)
+	buf.WriteString("</w:numPr>")
+}
+
 // generateParagraphXML creates the XML for a paragraph with the specified options.
 // urlRelIDs maps URL strings to their relationship IDs (returned by addHyperlinkRelationship).
 // Runs with a non-empty URL are emitted as inline <w:hyperlink> elements when a
@@ -331,40 +357,13 @@ func generateParagraphXML(opts ParagraphOptions, listIDs listNumberingIDs, resta
 		styleToApply = "ListParagraph"
 	}
 
+	// ECMA-376 CT_PPr element order: pStyle → keepNext → keepLines → numPr → jc
 	// Add style if specified or determined
 	if styleToApply != StyleNormal {
-		buf.WriteString(fmt.Sprintf(`<w:pStyle w:val="%s"/>`, xmlEscape(string(styleToApply))))
+		fmt.Fprintf(&buf, `<w:pStyle w:val="%s"/>`, xmlEscape(string(styleToApply)))
 	}
 
-	if alignment, ok := paragraphAlignmentValue(opts.Alignment); ok {
-		buf.WriteString(fmt.Sprintf(`<w:jc w:val="%s"/>`, alignment))
-	}
-
-	// Add numbering properties if ListType is specified
-	if opts.ListType != "" {
-		var numID int
-		if opts.ListType == ListTypeBullet {
-			numID = listIDs.bulletNumID
-		} else if opts.ListType == ListTypeNumbered {
-			if restartNumID > 0 {
-				numID = restartNumID
-			} else {
-				numID = listIDs.numberedNumID
-			}
-		}
-
-		if numID > 0 {
-			// Validate and constrain list level
-			level := min(max(opts.ListLevel, 0), 8)
-
-			buf.WriteString("<w:numPr>")
-			buf.WriteString(fmt.Sprintf(`<w:ilvl w:val="%d"/>`, level))
-			buf.WriteString(fmt.Sprintf(`<w:numId w:val="%d"/>`, numID))
-			buf.WriteString("</w:numPr>")
-		}
-	}
-
-	// Pagination control: keep with next paragraph (headings) and keep lines together.
+	// Pagination control must come before numPr per ECMA-376 schema.
 	if opts.KeepNext {
 		buf.WriteString("<w:keepNext/>")
 	}
@@ -372,17 +371,51 @@ func generateParagraphXML(opts ParagraphOptions, listIDs listNumberingIDs, resta
 		buf.WriteString("<w:keepLines/>")
 	}
 
+	// Add numbering properties: ListType takes precedence, then NumID direct override.
+	// OverrideNumID (when set) replaces the auto-selected numId within the ListType branch
+	// so that all items in a restarted sequence share the same fresh numId.
+	if opts.ListType != "" {
+		var numID int
+		if opts.ListType == ListTypeBullet {
+			numID = listIDs.bulletNumID
+		} else if opts.ListType == ListTypeNumbered {
+			switch {
+			case opts.OverrideNumID > 0:
+				numID = opts.OverrideNumID
+			case restartNumID > 0:
+				numID = restartNumID
+			default:
+				numID = listIDs.numberedNumID
+			}
+		}
+
+		if numID > 0 {
+			writeNumPrXML(&buf, opts.ListLevel, numID)
+		}
+	} else if opts.NumID > 0 {
+		writeNumPrXML(&buf, opts.NumLevel, opts.NumID)
+	}
+
+	if alignment, ok := paragraphAlignmentValue(opts.Alignment); ok {
+		fmt.Fprintf(&buf, `<w:jc w:val="%s"/>`, alignment)
+	}
+
 	buf.WriteString("</w:pPr>")
 
 	if len(opts.Runs) > 0 {
 		// Multi-run paragraph: emit one <w:r> per RunOptions entry.
 		// Runs with a URL are wrapped in <w:hyperlink> when a relationship ID is available.
+		// Runs with a BookmarkRef are wrapped in <w:hyperlink w:anchor="..."> for internal links.
 		for _, run := range opts.Runs {
 			if run.URL != "" {
 				if rID, ok := urlRelIDs[run.URL]; ok {
 					writeHyperlinkRunXML(&buf, run, rID)
 					continue
 				}
+			}
+			if run.BookmarkRef != "" {
+				writeInternalLinkRunXML(&buf, run)
+				continue
 			}
 			writeRunXML(&buf, run)
 		}
@@ -414,10 +447,8 @@ func writeRunXML(buf *bytes.Buffer, run RunOptions) {
 	if hasRPr {
 		buf.WriteString("<w:rPr>")
 		if run.FontName != "" {
-			buf.WriteString(fmt.Sprintf(
-				`<w:rFonts w:ascii="%s" w:hAnsi="%s"/>`,
-				xmlEscape(run.FontName), xmlEscape(run.FontName),
-			))
+			fmt.Fprintf(buf, `<w:rFonts w:ascii="%s" w:hAnsi="%s"/>`,
+				xmlEscape(run.FontName), xmlEscape(run.FontName))
 		}
 		if run.Bold {
 			buf.WriteString("<w:b/>")
@@ -432,11 +463,11 @@ func writeRunXML(buf *bytes.Buffer, run RunOptions) {
 			// normalizeHexColor validates and normalises the value; skip invalid strings
 			// to avoid emitting malformed XML attribute values.
 			if normalized := normalizeHexColor(run.Color); normalized != "" {
-				buf.WriteString(fmt.Sprintf(`<w:color w:val="%s"/>`, normalized))
+				fmt.Fprintf(buf, `<w:color w:val="%s"/>`, normalized)
 			}
 		}
 		if run.Highlight != "" {
-			buf.WriteString(fmt.Sprintf(`<w:highlight w:val="%s"/>`, xmlEscape(run.Highlight)))
+			fmt.Fprintf(buf, `<w:highlight w:val="%s"/>`, xmlEscape(run.Highlight))
 		}
 		if run.Underline {
 			buf.WriteString(`<w:u w:val="single"/>`)
@@ -444,8 +475,8 @@ func writeRunXML(buf *bytes.Buffer, run RunOptions) {
 		if run.FontSize > 0 {
 			// w:sz / w:szCs values are in half-points (see FontSizeHalfPointsFactor).
 			hp := int(run.FontSize * FontSizeHalfPointsFactor)
-			buf.WriteString(fmt.Sprintf(`<w:sz w:val="%d"/>`, hp))
-			buf.WriteString(fmt.Sprintf(`<w:szCs w:val="%d"/>`, hp))
+			fmt.Fprintf(buf, `<w:sz w:val="%d"/>`, hp)
+			fmt.Fprintf(buf, `<w:szCs w:val="%d"/>`, hp)
 		}
 		if run.Superscript {
 			buf.WriteString(`<w:vertAlign w:val="superscript"/>`)
@@ -464,7 +495,20 @@ func writeRunXML(buf *bytes.Buffer, run RunOptions) {
 // Hyperlinks are always underlined. Color defaults to "0563C1" (Word blue) but
 // can be overridden by setting run.Color before calling this function.
 func writeHyperlinkRunXML(buf *bytes.Buffer, run RunOptions, rID string) {
-	buf.WriteString(fmt.Sprintf(`<w:hyperlink r:id="%s" w:history="1">`, xmlEscape(rID)))
+	fmt.Fprintf(buf, `<w:hyperlink r:id="%s" w:history="1">`, xmlEscape(rID))
+	finishHyperlinkXML(buf, run)
+}
+
+// writeInternalLinkRunXML emits a <w:hyperlink w:anchor="..."> element for an
+// internal bookmark reference within the same document.
+func writeInternalLinkRunXML(buf *bytes.Buffer, run RunOptions) {
+	fmt.Fprintf(buf, `<w:hyperlink w:anchor="%s" w:history="1">`, xmlEscape(run.BookmarkRef))
+	finishHyperlinkXML(buf, run)
+}
+
+// finishHyperlinkXML applies hyperlink defaults (blue colour, underline) to run
+// then writes the run body and closing </w:hyperlink> tag.
+func finishHyperlinkXML(buf *bytes.Buffer, run RunOptions) {
 	if run.Color == "" {
 		run.Color = "0563C1"
 	}
@@ -845,20 +889,45 @@ var headingStyles = [10]ParagraphStyle{
 	9: StyleHeading9,
 }
 
+// DisableHeadingNumbering suppresses the automatic <w:numPr> injection that
+// AddHeading normally applies for multi-level outline numbering. When disabled,
+// AddHeading emits only <w:pStyle> for the requested heading level so the
+// document's own style definitions (e.g. from an uploaded project template)
+// fully control heading appearance including any numbering they define.
+//
+// Call this immediately after opening a template-based document so that headings
+// appended by the renderer inherit the template's formatting unchanged.
+func (u *Updater) DisableHeadingNumbering() {
+	u.headingNumberingDisabled = true
+}
+
 // AddHeading is a convenience function to add a heading paragraph at the
 // specified level (1–9), matching Word's built-in Heading 1 – Heading 9 styles.
+// Unless DisableHeadingNumbering has been called, the heading is automatically
+// numbered using multi-level outline numbering (1. / 1.2. / 1.2.3. …).
 func (u *Updater) AddHeading(level int, text string, position InsertPosition) error {
 	if level < 1 || level > 9 {
 		return fmt.Errorf("heading level must be between 1 and 9, got %d", level)
 	}
 	style := headingStyles[level]
 
-	return u.InsertParagraph(ParagraphOptions{
+	opts := ParagraphOptions{
 		Text:     text,
 		Style:    style,
 		Position: position,
 		KeepNext: true, // Prevent headings from being orphaned at the bottom of a page
-	})
+	}
+
+	if !u.headingNumberingDisabled {
+		headingNumID, err := u.ensureHeadingOutlineNumbering()
+		if err != nil {
+			return fmt.Errorf("ensure heading outline numbering: %w", err)
+		}
+		opts.NumID = headingNumID
+		opts.NumLevel = level - 1 // ilvl is 0-based
+	}
+
+	return u.InsertParagraph(opts)
 }
 
 // AddText is a convenience function to add normal text paragraph
