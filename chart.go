@@ -742,6 +742,10 @@ func generateSheetXML(opts ChartOptions) []byte {
 
 	// Determine if we need X values column (for scatter charts with XValues)
 	hasXValues := opts.ChartKind == ChartKindScatter && len(opts.Series) > 0 && len(opts.Series[0].XValues) > 0
+	seriesColOffset := 2 // Column B by default
+	if hasXValues {
+		seriesColOffset = 3 // Column C when column B is reserved for X values
+	}
 
 	// Header row with series names
 	buf.WriteString(`<row r="1">`)
@@ -750,7 +754,7 @@ func generateSheetXML(opts ChartOptions) []byte {
 		buf.WriteString(`<c r="B1" t="str"><v>X Values</v></c>`) // X values header
 	}
 	for i, series := range opts.Series {
-		col := columnLetter(i + 3) // Start from column C if XValues exist, otherwise B
+		col := columnLetter(i + seriesColOffset)
 		buf.WriteString(fmt.Sprintf(`<c r="%s1" t="str"><v>%s</v></c>`, col, xmlEscape(series.Name)))
 	}
 	buf.WriteString(`</row>`)
@@ -770,7 +774,7 @@ func generateSheetXML(opts ChartOptions) []byte {
 
 		// Values for each series
 		for j := range opts.Series {
-			col := columnLetter(j + 3)
+			col := columnLetter(j + seriesColOffset)
 			if i < len(opts.Series[j].Values) {
 				buf.WriteString(fmt.Sprintf(`<c r="%s%d"><v>%g</v></c>`, col, rowNum, opts.Series[j].Values[i]))
 			}

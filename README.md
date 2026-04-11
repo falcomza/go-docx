@@ -20,7 +20,7 @@ A powerful Go library for programmatically manipulating Microsoft Word (DOCX) do
 - **Chart Insertion**: Create bar, column, line, pie, area, and scatter charts from scratch
 - **Scatter Charts**: Full XValues support for true scatter/XY data
 - **Multi-Chart Workflows**: Insert multiple charts programmatically
-- **Read Chart Data**: Extract existing chart categories and series
+- **Read Chart Data**: Extract existing chart titles, categories, and series
 
 📝 **Document Structure**
 - **Table of Contents**: Generate automatic TOC using Word field codes, with update-on-open support
@@ -806,7 +806,7 @@ u.Save("with_lists.docx")
 | `InsertChart(opts ChartOptions)` | Create new chart |
 | `UpdateChart(index, data)` | Update existing chart data |
 | `GetChartCount()` | Count charts in document |
-| `GetChartData(chartIndex)` | Read chart categories and series |
+| `GetChartData(chartIndex)` | Read chart title, categories, and series |
 
 ### Table of Contents
 | Method | Description |
@@ -1043,6 +1043,9 @@ DOCX files are ZIP archives containing XML files. This library:
 - `UpdateChart` requires `<c:externalData r:id="..."/>` and a valid `word/charts/_rels/chartN.xml.rels` target to an embedded workbook.
 - Chart indices and delete/update indices are 1-based.
 - Scatter chart updates expect numeric category values (used as X values).
+- Inserted chart workbooks align series headers/data columns with chart formulas (`B..` for regular charts, `C..` when scatter X values occupy column `B`).
+- Line chart series emit `c:marker` in schema-compliant `c:ser` child order for Microsoft 365 validation.
+- `GetChartData` reads chart titles from both rich text (`a:t`) and value (`c:v`) title representations.
 - Updating chart data rewrites chart series and worksheet `sheetData`; chart/workbook-level formatting in embedded workbooks is intentionally not preserved.
 - Namespace prefix changes in output XML are expected and valid as long as namespace URIs remain correct.
 

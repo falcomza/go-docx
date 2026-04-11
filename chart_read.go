@@ -43,11 +43,14 @@ func parseChartDataFromXML(raw []byte) (ChartData, error) {
 	// Compile the value tag regexp once for the entire parse; the pattern
 	// depends on the namespace prefix which is a runtime value.
 	vRe := regexp.MustCompile(`<` + regexp.QuoteMeta(tag("v")) + `(?:\s[^>]*)?>([^<]*)<`)
+	aTRe := regexp.MustCompile(`<a:t(?:\s[^>]*)?>([^<]*)<`)
 
-	// Title: first <c:v> inside the <c:title> block
+	// Title: prefer rich text <a:t>, fallback to <c:v>.
 	titleBlock := extractFirstBlock(content, "<"+tag("title")+">", "<"+tag("title")+" ", "</"+tag("title")+">")
 	if titleBlock != "" {
-		if m := vRe.FindStringSubmatch(titleBlock); m != nil {
+		if m := aTRe.FindStringSubmatch(titleBlock); m != nil {
+			data.ChartTitle = strings.TrimSpace(m[1])
+		} else if m := vRe.FindStringSubmatch(titleBlock); m != nil {
 			data.ChartTitle = strings.TrimSpace(m[1])
 		}
 	}

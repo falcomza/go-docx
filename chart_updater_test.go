@@ -916,3 +916,54 @@ func TestCreateDocxUsingChartFunctionalities(t *testing.T) {
 		t.Fatalf("chart2 scatter data missing: %+v", scatter.Series)
 	}
 }
+
+func TestGetChartDataReadsRichTextTitle(t *testing.T) {
+	tempDir := t.TempDir()
+	inputPath := filepath.Join(tempDir, "input.docx")
+	outputPath := filepath.Join(tempDir, "output.docx")
+
+	if err := os.WriteFile(inputPath, buildFixtureDocx(t), 0o644); err != nil {
+		t.Fatalf("write input fixture: %v", err)
+	}
+
+	u, err := godocx.New(inputPath)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer u.Cleanup()
+
+	if err := u.InsertChart(godocx.ChartOptions{
+		Position:   godocx.PositionEnd,
+		Title:      "Rich Title A",
+		ChartKind:  godocx.ChartKindColumn,
+		Categories: []string{"A", "B"},
+		Series: []godocx.SeriesOptions{
+			{Name: "S1", Values: []float64{1, 2}},
+		},
+	}); err != nil {
+		t.Fatalf("InsertChart: %v", err)
+	}
+
+	count, err := u.GetChartCount()
+	if err != nil {
+		t.Fatalf("GetChartCount: %v", err)
+	}
+
+	if err := u.Save(outputPath); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	u2, err := godocx.New(outputPath)
+	if err != nil {
+		t.Fatalf("New(output): %v", err)
+	}
+	defer u2.Cleanup()
+
+	data, err := u2.GetChartData(count)
+	if err != nil {
+		t.Fatalf("GetChartData: %v", err)
+	}
+	if data.ChartTitle != "Rich Title A" {
+		t.Fatalf("chart title: got %q want %q", data.ChartTitle, "Rich Title A")
+	}
+}

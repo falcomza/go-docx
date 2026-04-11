@@ -74,6 +74,9 @@ The DOCX Chart Updater is a Go library for programmatically manipulating Microso
 ### OOXML Compatibility Constraints
 
 - `UpdateChart` requires valid chart-to-workbook relationships via `<c:externalData>` and `chartN.xml.rels`.
+- Inserted chart workbooks align series headers/data columns with chart formulas (`B..` for regular charts, `C..` when scatter X values occupy column `B`).
+- Line chart series emit `c:marker` in schema-compliant `c:ser` child order for Microsoft 365 validation.
+- `GetChartData` reads chart titles from both rich text (`a:t`) and value (`c:v`) title representations.
 - Chart XML series and embedded workbook `sheetData` are regenerated during updates; workbook styling/formatting is not preserved.
 - Namespace prefix normalization and prefix differences in output XML are expected and standards-compliant.
 
@@ -1046,7 +1049,11 @@ Returns the number of images in the document.
 
 #### `GetChartData(chartIndex int) (ChartData, error)`
 
-Reads the categories, series names, and values from an existing chart.
+Reads chart title, categories, series names, and values from an existing chart.
+
+Notes:
+- Supports chart titles stored as rich text (`a:t`) or value text (`c:v`).
+- Supports scatter charts by reading `xVal`/`yVal` when `cat`/`val` are not present.
 
 **Example:**
 ```go

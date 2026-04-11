@@ -1748,7 +1748,11 @@ Returns the number of images.
 func (u *Updater) GetChartData(chartIndex int) (ChartData, error)
 ```
 
-Reads chart data from an existing chart.
+Reads chart title, categories, series names, and values from an existing chart.
+
+Notes:
+- Supports titles stored as rich text (`a:t`) or value text (`c:v`).
+- For scatter charts, reads `xVal`/`yVal` when `cat`/`val` are absent.
 
 ### TOC Operations
 
