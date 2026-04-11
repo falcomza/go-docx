@@ -1764,6 +1764,38 @@ func (u *Updater) InsertTOC(opts TOCOptions) error
 
 Inserts a Table of Contents.
 
+#### InsertTableOfFigures
+
+```go
+func (u *Updater) InsertTableOfFigures(opts CaptionListOptions) error
+```
+
+Inserts a caption-based list field for `Figure` captions.
+
+#### InsertTableOfTables
+
+```go
+func (u *Updater) InsertTableOfTables(opts CaptionListOptions) error
+```
+
+Inserts a caption-based list field for `Table` captions.
+
+#### DefaultTableOfFiguresOptions
+
+```go
+func DefaultTableOfFiguresOptions() CaptionListOptions
+```
+
+Returns default options for a Table of Figures.
+
+#### DefaultTableOfTablesOptions
+
+```go
+func DefaultTableOfTablesOptions() CaptionListOptions
+```
+
+Returns default options for a Table of Tables.
+
 #### UpdateTOC
 
 ```go

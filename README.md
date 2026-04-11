@@ -24,6 +24,7 @@ A powerful Go library for programmatically manipulating Microsoft Word (DOCX) do
 
 📝 **Document Structure**
 - **Table of Contents**: Generate automatic TOC using Word field codes, with update-on-open support
+- **Table of Figures / Tables**: Generate caption-based lists for figure and table captions using Word field codes
 - **Page & Section Breaks**: Control document flow with page and section breaks
 - **Page Layout**: Configure page sizes, orientation, and margins per section
 - **Headers & Footers**: Professional headers and footers with page numbering
@@ -285,6 +286,22 @@ for _, entry := range entries {
 }
 
 u.Save("with_toc.docx")
+```
+
+### Table of Figures and Table of Tables
+
+Generate caption-based lists for existing `Figure` and `Table` captions:
+
+```go
+u, _ := godocx.New("document.docx")
+defer u.Cleanup()
+
+u.InsertTableOfFigures(godocx.DefaultTableOfFiguresOptions())
+u.InsertTableOfTables(godocx.DefaultTableOfTablesOptions())
+
+// Word populates the lists when fields are updated on open
+u.UpdateTOC()
+u.Save("with_caption_lists.docx")
 ```
 
 ### Custom Styles
@@ -812,6 +829,8 @@ u.Save("with_lists.docx")
 | Method | Description |
 |--------|-------------|
 | `InsertTOC(opts TOCOptions)` | Insert TOC field |
+| `InsertTableOfFigures(opts CaptionListOptions)` | Insert caption-based list for figure captions |
+| `InsertTableOfTables(opts CaptionListOptions)` | Insert caption-based list for table captions |
 | `UpdateTOC()` | Mark TOC for recalculation on open |
 | `GetTOCEntries()` | Parse existing TOC entries |
 

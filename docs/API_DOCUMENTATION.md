@@ -57,7 +57,7 @@ The DOCX Chart Updater is a Go library for programmatically manipulating Microso
 | **Table Merge** | `MergeTableCellsHorizontal()`, `MergeTableCellsVertical()` |
 | **Count** | `GetChartCount()`, `GetTableCount()`, `GetParagraphCount()`, `GetImageCount()` |
 | **Chart Reading** | `GetChartData()` |
-| **TOC** | `InsertTOC()`, `UpdateTOC()`, `GetTOCEntries()` |
+| **TOC** | `InsertTOC()`, `InsertTableOfFigures()`, `InsertTableOfTables()`, `UpdateTOC()`, `GetTOCEntries()` |
 | **Footnotes/Endnotes** | `InsertFootnote()`, `InsertEndnote()` |
 | **Comments** | `InsertComment()`, `GetComments()` |
 | **Styles** | `AddStyle()`, `AddStyles()` |
@@ -186,6 +186,11 @@ word/charts/chart1.xml
 ```
 
 The library resolves these relationships automatically—no manual path handling required.
+
+### Caption-Based Lists
+
+`InsertTableOfFigures` and `InsertTableOfTables` generate Word field codes that build lists from caption labels created with `SEQ Figure` and `SEQ Table` fields.
+As with a normal TOC, Word populates these lists when the field is updated on open.
 
 ---
 
@@ -1091,6 +1096,30 @@ updater.InsertTOC(godocx.TOCOptions{
     OutlineLevels: "1-3",
     Position:      godocx.PositionBeginning,
 })
+```
+
+#### `InsertTableOfFigures(opts CaptionListOptions) error`
+
+Inserts a caption-based list field for `Figure` captions.
+
+#### `InsertTableOfTables(opts CaptionListOptions) error`
+
+Inserts a caption-based list field for `Table` captions.
+
+**CaptionListOptions:**
+```go
+type CaptionListOptions struct {
+    Title    string
+    Position InsertPosition
+    Anchor   string
+}
+```
+
+**Example:**
+```go
+updater.InsertTableOfFigures(godocx.DefaultTableOfFiguresOptions())
+updater.InsertTableOfTables(godocx.DefaultTableOfTablesOptions())
+updater.UpdateTOC()
 ```
 
 #### `UpdateTOC() error`
