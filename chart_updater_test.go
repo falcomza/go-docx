@@ -3,6 +3,8 @@ package godocx_test
 import (
 	"archive/zip"
 	"bytes"
+	"encoding/xml"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -665,3 +667,252 @@ func TestGetChartDataFromFixture(t *testing.T) {
 	}
 }
 
+func TestUpdateChartEscapesSpecialCharactersInTitles_GeneratedDocx(t *testing.T) {
+	tempDir := t.TempDir()
+	inputPath := filepath.Join(tempDir, "input.docx")
+	outputPath := filepath.Join(tempDir, "output.docx")
+
+	if err := os.WriteFile(inputPath, buildFixtureDocx(t), 0o644); err != nil {
+		t.Fatalf("write input fixture: %v", err)
+	}
+
+	u, err := godocx.New(inputPath)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer u.Cleanup()
+
+	if err := u.InsertChart(godocx.ChartOptions{
+		Position:          godocx.PositionEnd,
+		Title:             "Base Title",
+		CategoryAxisTitle: "Base X",
+		ValueAxisTitle:    "Base Y",
+		Categories:        []string{"A", "B"},
+		Series: []godocx.SeriesOptions{
+			{Name: "S1", Values: []float64{1, 2}},
+		},
+		ShowLegend: true,
+	}); err != nil {
+		t.Fatalf("InsertChart: %v", err)
+	}
+
+	chartCount, err := u.GetChartCount()
+	if err != nil {
+		t.Fatalf("GetChartCount: %v", err)
+	}
+
+	data := godocx.ChartData{
+		Categories:        []string{"Jan", "Feb"},
+		Series:            []godocx.SeriesData{{Name: "Revenue", Values: []float64{10, 20}}},
+		ChartTitle:        `Revenue & Growth <FY2026> "Net" 'A'`,
+		CategoryAxisTitle: `Month & Week <X>`,
+		ValueAxisTitle:    `USD > EUR & "Gross"`,
+	}
+	if err := u.UpdateChart(chartCount, data); err != nil {
+		t.Fatalf("UpdateChart: %v", err)
+	}
+
+	if err := u.Save(outputPath); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	chartPath := fmt.Sprintf("word/charts/chart%d.xml", chartCount)
+	chartXML := readZipEntry(t, outputPath, chartPath)
+
+	if !strings.Contains(chartXML, `Revenue &amp; Growth &lt;FY2026&gt; &quot;Net&quot; &apos;A&apos;`) {
+		t.Fatalf("chart title was not XML-escaped correctly: %s", chartXML)
+	}
+	if !strings.Contains(chartXML, `Month &amp; Week &lt;X&gt;`) {
+		t.Fatalf("category axis title was not XML-escaped correctly: %s", chartXML)
+	}
+	if !strings.Contains(chartXML, `USD &gt; EUR &amp; &quot;Gross&quot;`) {
+		t.Fatalf("value axis title was not XML-escaped correctly: %s", chartXML)
+	}
+
+	decoder := xml.NewDecoder(strings.NewReader(chartXML))
+	for {
+		_, err := decoder.Token()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("updated chart XML is not well-formed: %v", err)
+		}
+	}
+}
+
+func TestGetChartDataScatterRoundTrip_GeneratedDocx(t *testing.T) {
+	tempDir := t.TempDir()
+	inputPath := filepath.Join(tempDir, "input.docx")
+	outputPath := filepath.Join(tempDir, "output.docx")
+
+	if err := os.WriteFile(inputPath, buildFixtureDocx(t), 0o644); err != nil {
+		t.Fatalf("write input fixture: %v", err)
+	}
+
+	u, err := godocx.New(inputPath)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer u.Cleanup()
+
+	if err := u.InsertChart(godocx.ChartOptions{
+		Position:   godocx.PositionEnd,
+		Title:      "Scatter Round Trip",
+		ChartKind:  godocx.ChartKindScatter,
+		Categories: []string{"Point 1", "Point 2", "Point 3"},
+		Series: []godocx.SeriesOptions{
+			{
+				Name:    "Dataset A",
+				XValues: []float64{1.5, 3.0, 4.5},
+				Values:  []float64{10, 25, 40},
+			},
+		},
+	}); err != nil {
+		t.Fatalf("InsertChart(scatter): %v", err)
+	}
+
+	chartCount, err := u.GetChartCount()
+	if err != nil {
+		t.Fatalf("GetChartCount: %v", err)
+	}
+
+	if err := u.Save(outputPath); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	u2, err := godocx.New(outputPath)
+	if err != nil {
+		t.Fatalf("New(output): %v", err)
+	}
+	defer u2.Cleanup()
+
+	got, err := u2.GetChartData(chartCount)
+	if err != nil {
+		t.Fatalf("GetChartData: %v", err)
+	}
+
+	wantCategories := []string{"1.5", "3", "4.5"}
+	if len(got.Categories) != len(wantCategories) {
+		t.Fatalf("categories length: got %d want %d (%v)", len(got.Categories), len(wantCategories), got.Categories)
+	}
+	for i, want := range wantCategories {
+		if got.Categories[i] != want {
+			t.Fatalf("categories[%d]: got %q want %q", i, got.Categories[i], want)
+		}
+	}
+
+	if len(got.Series) != 1 {
+		t.Fatalf("series length: got %d want 1", len(got.Series))
+	}
+	if got.Series[0].Name != "Dataset A" {
+		t.Fatalf("series name: got %q want %q", got.Series[0].Name, "Dataset A")
+	}
+	wantValues := []float64{10, 25, 40}
+	if len(got.Series[0].Values) != len(wantValues) {
+		t.Fatalf("series values len: got %d want %d", len(got.Series[0].Values), len(wantValues))
+	}
+	for i, want := range wantValues {
+		if got.Series[0].Values[i] != want {
+			t.Fatalf("series values[%d]: got %v want %v", i, got.Series[0].Values[i], want)
+		}
+	}
+}
+
+func TestCreateDocxUsingChartFunctionalities(t *testing.T) {
+	tempDir := t.TempDir()
+	outputPath := filepath.Join(tempDir, "charts_created.docx")
+
+	u, err := godocx.NewBlank()
+	if err != nil {
+		t.Fatalf("NewBlank: %v", err)
+	}
+	defer u.Cleanup()
+
+	if err := u.InsertChart(godocx.ChartOptions{
+		Position:          godocx.PositionEnd,
+		Title:             "Revenue 2026",
+		CategoryAxisTitle: "Quarter",
+		ValueAxisTitle:    "USD",
+		Categories:        []string{"Q1", "Q2", "Q3", "Q4"},
+		Series: []godocx.SeriesOptions{
+			{Name: "Revenue", Values: []float64{100, 130, 125, 160}},
+			{Name: "Cost", Values: []float64{70, 90, 88, 100}},
+		},
+		ShowLegend: true,
+	}); err != nil {
+		t.Fatalf("InsertChart(column): %v", err)
+	}
+
+	if err := u.InsertChart(godocx.ChartOptions{
+		Position:   godocx.PositionEnd,
+		Title:      "Scatter Correlation",
+		ChartKind:  godocx.ChartKindScatter,
+		Categories: []string{"A", "B", "C"},
+		Series: []godocx.SeriesOptions{
+			{Name: "Dataset A", XValues: []float64{1.5, 2.5, 3.5}, Values: []float64{10, 14, 18}},
+		},
+	}); err != nil {
+		t.Fatalf("InsertChart(scatter): %v", err)
+	}
+
+	if err := u.UpdateChart(1, godocx.ChartData{
+		Categories:        []string{"Q1", "Q2", "Q3", "Q4"},
+		Series:            []godocx.SeriesData{{Name: "Revenue", Values: []float64{110, 140, 135, 170}}},
+		ChartTitle:        "Revenue 2026 Updated",
+		CategoryAxisTitle: "Quarter Updated",
+		ValueAxisTitle:    "USD Updated",
+	}); err != nil {
+		t.Fatalf("UpdateChart(1): %v", err)
+	}
+
+	if err := u.Save(outputPath); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	fi, err := os.Stat(outputPath)
+	if err != nil {
+		t.Fatalf("output docx not created: %v", err)
+	}
+	if fi.Size() == 0 {
+		t.Fatal("output docx is empty")
+	}
+
+	u2, err := godocx.New(outputPath)
+	if err != nil {
+		t.Fatalf("New(output): %v", err)
+	}
+	defer u2.Cleanup()
+
+	count, err := u2.GetChartCount()
+	if err != nil {
+		t.Fatalf("GetChartCount: %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("chart count: got %d want 2", count)
+	}
+
+	updated, err := u2.GetChartData(1)
+	if err != nil {
+		t.Fatalf("GetChartData(1): %v", err)
+	}
+	if len(updated.Series) != 1 || updated.Series[0].Name != "Revenue" {
+		t.Fatalf("chart1 series not updated correctly: %+v", updated.Series)
+	}
+	if len(updated.Series[0].Values) != 4 || updated.Series[0].Values[0] != 110 || updated.Series[0].Values[3] != 170 {
+		t.Fatalf("chart1 values not updated correctly: %+v", updated.Series[0].Values)
+	}
+
+	chart1XML := readZipEntry(t, outputPath, "word/charts/chart1.xml")
+	if !strings.Contains(chart1XML, "Revenue 2026 Updated") {
+		t.Fatalf("chart1 title not found in chart XML")
+	}
+
+	scatter, err := u2.GetChartData(2)
+	if err != nil {
+		t.Fatalf("GetChartData(2): %v", err)
+	}
+	if len(scatter.Series) != 1 || scatter.Series[0].Name != "Dataset A" {
+		t.Fatalf("chart2 scatter data missing: %+v", scatter.Series)
+	}
+}

@@ -27,6 +27,8 @@ type Updater struct {
 	numberedListNumID int
 	headingNumID      int
 
+	noteRefStylesEnsured bool
+
 	// headingNumberingDisabled suppresses <w:numPr> injection in AddHeading so that
 	// the document's own heading styles (e.g. from an uploaded template) control all
 	// formatting. When true, AddHeading emits only <w:pStyle> for the heading level.
@@ -133,6 +135,14 @@ func New(docxPath string) (*Updater, error) {
 	if err := normalizeFontTableCharsets(tempDir); err != nil {
 		os.RemoveAll(tempDir)
 		return nil, fmt.Errorf("normalize fontTable charsets: %w", err)
+	}
+
+	// Normalize invalid w:lvlJc values in numbering.xml (e.g. "start"/"end"
+	// emitted by LibreOffice) so documents validate in Microsoft 365 even when
+	// callers do not invoke list APIs.
+	if err := normalizeNumberingLvlJc(tempDir); err != nil {
+		os.RemoveAll(tempDir)
+		return nil, fmt.Errorf("normalize numbering lvlJc: %w", err)
 	}
 
 	u := &Updater{originalPath: docxPath, tempDir: tempDir}
@@ -503,6 +513,29 @@ func normalizeFontTableCharsets(tempDir string) error {
 		return nil
 	}
 	return atomicWriteFile(ftPath, []byte(normalized), 0o644)
+}
+
+// normalizeNumberingLvlJc rewrites invalid logical alignment values in
+// numbering.xml level justification (<w:lvlJc>) to OOXML-compatible values.
+func normalizeNumberingLvlJc(tempDir string) error {
+	numberingPath := filepath.Join(tempDir, "word", "numbering.xml")
+	data, err := os.ReadFile(numberingPath)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("read numbering.xml: %w", err)
+	}
+
+	normalized := normalizeLvlJcValues(string(data))
+	if normalized == string(data) {
+		return nil
+	}
+
+	if err := atomicWriteFile(numberingPath, []byte(normalized), 0o644); err != nil {
+		return fmt.Errorf("write numbering.xml: %w", err)
+	}
+	return nil
 }
 
 // validateStructure checks that required OpenXML parts exist.

@@ -1,8 +1,7 @@
 # DOCX Update Library - API Reference
 
 **Module**: `github.com/falcomza/go-docx`
-**Go Version**: 1.25.7+
-**Fiber Version**: v3.0.0+
+**Go Version**: 1.26+
 
 ---
 
@@ -13,7 +12,7 @@
 3. [Exported Types](#exported-types)
 4. [Exported Functions](#exported-functions)
 5. [Exported Methods](#exported-methods)
-6. [Fiber v3 Integration](#fiber-v3-integration)
+6. [Web Framework Integration (Optional)](#web-framework-integration-optional)
 7. [Complete Handler Examples](#complete-handler-examples)
 
 ---
@@ -27,7 +26,7 @@ import godocx "github.com/falcomza/go-docx"
 The `godocx` package provides functionality for programmatically manipulating Microsoft Word (DOCX) documents. It operates directly on the OpenXML format, enabling chart updates, table insertion, image embedding, and text operations.
 
 **Key characteristics:**
-- Safe for concurrent use (each `Updater` instance uses isolated temp directories)
+- Updater instances are isolated by temp directory, but a single `Updater` instance is not goroutine-safe
 - 1-based indexing for chart operations
 - Strict validation with descriptive error types
 - Automatic cleanup via `defer updater.Cleanup()`
@@ -40,13 +39,10 @@ The `godocx` package provides functionality for programmatically manipulating Mi
 go get github.com/falcomza/go-docx@latest
 ```
 
-### Import in Fiber Application
+### Import
 
 ```go
-import (
-    godocx "github.com/falcomza/go-docx"
-    "github.com/gofiber/fiber/v3"
-)
+import godocx "github.com/falcomza/go-docx"
 ```
 
 ---
@@ -1856,7 +1852,9 @@ Adds a text watermark.
 
 ---
 
-## Fiber v3 Integration
+## Web Framework Integration (Optional)
+
+The examples in this section use Fiber, but the same patterns apply to any Go web framework.
 
 ### Basic Setup
 

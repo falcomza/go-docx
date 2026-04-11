@@ -48,6 +48,10 @@ func (u *Updater) InsertFootnote(opts FootnoteOptions) error {
 		return fmt.Errorf("ensure footnotes.xml: %w", err)
 	}
 
+	if err := u.ensureNoteReferenceStyles(); err != nil {
+		return fmt.Errorf("ensure note reference styles: %w", err)
+	}
+
 	// Add the footnote content to footnotes.xml
 	if err := u.addFootnoteContent(footnoteID, opts.Text); err != nil {
 		return fmt.Errorf("add footnote content: %w", err)
@@ -79,6 +83,10 @@ func (u *Updater) InsertEndnote(opts EndnoteOptions) error {
 	endnoteID, err := u.ensureEndnotesXML()
 	if err != nil {
 		return fmt.Errorf("ensure endnotes.xml: %w", err)
+	}
+
+	if err := u.ensureNoteReferenceStyles(); err != nil {
+		return fmt.Errorf("ensure note reference styles: %w", err)
 	}
 
 	// Add the endnote content to endnotes.xml
@@ -414,6 +422,75 @@ func (u *Updater) addNoteRelationship(filename, relType string) error {
 		return fmt.Errorf("write rels: %w", err)
 	}
 
+	return nil
+}
+
+// ensureNoteReferenceStyles guarantees that the FootnoteReference and EndnoteReference
+// character styles exist in styles.xml with <w:vertAlign w:val="superscript"/>.
+//
+// Word only renders in-text note reference markers as superscript when the character
+// style explicitly carries that property. LibreOffice hard-codes the behaviour, but
+// Word falls back to normal-size text when the style is absent or lacks vertAlign.
+func (u *Updater) ensureNoteReferenceStyles() error {
+	if u.noteRefStylesEnsured {
+		return nil
+	}
+
+	stylesPath := filepath.Join(u.tempDir, "word", "styles.xml")
+	raw, err := os.ReadFile(stylesPath)
+	wasAbsent := os.IsNotExist(err)
+	if err != nil && !wasAbsent {
+		return fmt.Errorf("read styles.xml: %w", err)
+	}
+
+	// Collect XML for any missing note reference styles in a single pass.
+	var missing []byte
+	for _, ns := range [2][2]string{
+		{"FootnoteReference", "footnote reference"},
+		{"EndnoteReference", "endnote reference"},
+	} {
+		id, name := ns[0], ns[1]
+		if strings.Contains(string(raw), `w:styleId="`+id+`"`) {
+			continue
+		}
+		missing = append(missing, fmt.Sprintf(
+			`<w:style w:type="character" w:styleId="%s">`+
+				`<w:name w:val="%s"/>`+
+				`<w:basedOn w:val="DefaultParagraphFont"/>`+
+				`<w:uiPriority w:val="99"/>`+
+				`<w:semiHidden/>`+
+				`<w:unhideWhenUsed/>`+
+				`<w:rPr><w:vertAlign w:val="superscript"/></w:rPr>`+
+				`</w:style>`,
+			id, name,
+		)...)
+	}
+
+	if len(missing) == 0 {
+		u.noteRefStylesEnsured = true
+		return nil
+	}
+
+	var updated []byte
+	if wasAbsent {
+		updated = generateStylesDocument(missing)
+	} else {
+		updated, err = injectStyle(raw, missing)
+		if err != nil {
+			return fmt.Errorf("inject note reference styles: %w", err)
+		}
+	}
+
+	if err := atomicWriteFile(stylesPath, updated, 0o644); err != nil {
+		return fmt.Errorf("write styles.xml: %w", err)
+	}
+	if wasAbsent {
+		if err := u.ensureStylesRelationship(); err != nil {
+			return fmt.Errorf("ensure styles relationship: %w", err)
+		}
+	}
+
+	u.noteRefStylesEnsured = true
 	return nil
 }
 

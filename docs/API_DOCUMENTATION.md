@@ -1,9 +1,9 @@
 # DOCX Chart Updater - API Documentation
 
-## Go Fiber Backend Integration Guide
+## Go Backend Integration Guide
 
 **Version**: 1.0.0
-**Go Version**: 1.25.7+
+**Go Version**: 1.26+
 **Import Path**: `github.com/falcomza/go-docx`
 
 ---
@@ -15,7 +15,7 @@
 3. [Quick Start](#quick-start)
 4. [Core Concepts](#core-concepts)
 5. [API Reference](#api-reference)
-6. [Fiber Integration](#fiber-integration)
+6. [Web Framework Integration (Optional)](#web-framework-integration-optional)
 7. [Error Handling](#error-handling)
 8. [Best Practices](#best-practices)
 9. [Performance Considerations](#performance-considerations)
@@ -69,7 +69,13 @@ The DOCX Chart Updater is a Go library for programmatically manipulating Microso
 - **1-based Indexing**: Chart indices start at 1, not 0
 - **Strict Validation**: Fails fast on invalid input with descriptive errors
 - **Resource Management**: Always use `defer updater.Cleanup()` for temp file cleanup
-- **Thread-Safe**: Each `Updater` instance operates on isolated temp directories
+- **Concurrency Model**: Updater instances are isolated by temp directory, but a single `Updater` instance is not goroutine-safe
+
+### OOXML Compatibility Constraints
+
+- `UpdateChart` requires valid chart-to-workbook relationships via `<c:externalData>` and `chartN.xml.rels`.
+- Chart XML series and embedded workbook `sheetData` are regenerated during updates; workbook styling/formatting is not preserved.
+- Namespace prefix normalization and prefix differences in output XML are expected and standards-compliant.
 
 ---
 
@@ -1352,7 +1358,9 @@ updater.InsertChart(godocx.ChartOptions{
 
 ---
 
-## Fiber Integration
+## Web Framework Integration (Optional)
+
+The examples below use Fiber, but the same patterns apply to Gin, Echo, Chi, net/http, or any other Go web framework.
 
 ### Basic HTTP Handler
 

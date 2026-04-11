@@ -232,23 +232,12 @@ func updateChartTitle(content, title, nsPrefix string) string {
 		return content
 	}
 
-	// Find the text element within title
 	titleSection := content[titleStart : titleStart+titleEnd]
-	tStart := strings.Index(titleSection, "<"+nsPrefix+"t>")
-	if tStart == -1 {
-		return content
+	if updated, ok := replaceFirstTextElement(content, titleStart, titleSection, []string{"a:t", nsPrefix + "t", "t"}, title); ok {
+		return updated
 	}
 
-	tEnd := strings.Index(titleSection[tStart:], "</"+nsPrefix+"t>")
-	if tEnd == -1 {
-		return content
-	}
-
-	// Replace the title text
-	beforeTitle := content[:titleStart+tStart+len("<"+nsPrefix+"t>")]
-	afterTitle := content[titleStart+tStart+len("<"+nsPrefix+"t>")+tEnd:]
-
-	return beforeTitle + title + afterTitle
+	return content
 }
 
 // updateAxisTitles updates the axis titles in the chart XML.
@@ -289,22 +278,42 @@ func updateFirstAxisTitle(content, title, nsPrefix, axisType string) string {
 		return content
 	}
 
-	tStart := strings.Index(axisSection[titleStart:], "<"+nsPrefix+"t>")
-	if tStart == -1 {
-		return content
+	titleSection := axisSection[titleStart:]
+	if updated, ok := replaceFirstTextElement(content, axisStart+titleStart, titleSection, []string{"a:t", nsPrefix + "t", "t"}, title); ok {
+		return updated
 	}
 
-	tEnd := strings.Index(axisSection[titleStart+tStart:], "</"+nsPrefix+"t>")
-	if tEnd == -1 {
-		return content
+	return content
+}
+
+func replaceFirstTextElement(content string, sectionStart int, section string, tagCandidates []string, value string) (string, bool) {
+	for _, tag := range tagCandidates {
+		if tag == "" {
+			continue
+		}
+		openTag := "<" + tag + ">"
+		closeTag := "</" + tag + ">"
+
+		openIdx := strings.Index(section, openTag)
+		if openIdx == -1 {
+			continue
+		}
+
+		innerStartRel := openIdx + len(openTag)
+		closeRel := strings.Index(section[innerStartRel:], closeTag)
+		if closeRel == -1 {
+			continue
+		}
+
+		innerStartAbs := sectionStart + innerStartRel
+		innerEndAbs := innerStartAbs + closeRel
+
+		before := content[:innerStartAbs]
+		after := content[innerEndAbs:]
+		return before + xmlEscape(value) + after, true
 	}
 
-	// Replace the axis title text
-	absoluteTStart := axisStart + titleStart + tStart + len("<"+nsPrefix+"t>")
-	beforeTitle := content[:absoluteTStart]
-	afterTitle := content[absoluteTStart+tEnd:]
-
-	return beforeTitle + title + afterTitle
+	return content, false
 }
 
 // updateChartSeries updates the series data in the chart XML.
@@ -484,20 +493,28 @@ func copyNonSeriesElements(chartSection, nsPrefix string) string {
 			}
 
 			pos += offset
-			endPos := strings.Index(chartSection[pos:], "/>")
-			if endPos != -1 {
-				buf.WriteString(chartSection[pos : pos+endPos+2])
-				offset = pos + endPos + 2
-			} else {
-				endTagStr := "</" + nsPrefix + tag + ">"
-				endPos = strings.Index(chartSection[pos:], endTagStr)
-				if endPos != -1 {
-					buf.WriteString(chartSection[pos : pos+endPos+len(endTagStr)])
-					offset = pos + endPos + len(endTagStr)
-				} else {
-					break
-				}
+
+			openEndRel := strings.Index(chartSection[pos:], ">")
+			if openEndRel == -1 {
+				break
 			}
+			openEnd := pos + openEndRel
+
+			// Self-closing element: <tag .../>
+			if openEnd > pos && chartSection[openEnd-1] == '/' {
+				buf.WriteString(chartSection[pos : openEnd+1])
+				offset = openEnd + 1
+				continue
+			}
+
+			endTagStr := "</" + nsPrefix + tag + ">"
+			endRel := strings.Index(chartSection[openEnd+1:], endTagStr)
+			if endRel == -1 {
+				break
+			}
+			end := openEnd + 1 + endRel + len(endTagStr)
+			buf.WriteString(chartSection[pos:end])
+			offset = end
 		}
 	}
 

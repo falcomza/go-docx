@@ -1032,6 +1032,20 @@ DOCX files are ZIP archives containing XML files. This library:
 - The ZIP extractor enforces a 256 MiB per-file cap to guard against zip-bomb payloads
 - XML escaping and unescaping use the stdlib `encoding/xml` codec throughout (no `html` package dependency)
 
+### Concurrency Model
+
+- `Updater` instances are isolated by temp directory, so using one `Updater` per goroutine/request is safe.
+- A single `Updater` instance is **not** goroutine-safe; do not call methods on the same instance concurrently.
+- Always call `defer u.Cleanup()` immediately after construction to avoid temp file leaks.
+
+### OOXML Compatibility Notes
+
+- `UpdateChart` requires `<c:externalData r:id="..."/>` and a valid `word/charts/_rels/chartN.xml.rels` target to an embedded workbook.
+- Chart indices and delete/update indices are 1-based.
+- Scatter chart updates expect numeric category values (used as X values).
+- Updating chart data rewrites chart series and worksheet `sheetData`; chart/workbook-level formatting in embedded workbooks is intentionally not preserved.
+- Namespace prefix changes in output XML are expected and valid as long as namespace URIs remain correct.
+
 ## Roadmap
 
 - [x] Chart updates and insertion (column, bar, line, pie, area, scatter)

@@ -1013,6 +1013,15 @@ func generateSeriesXML(index int, series SeriesOptions, opts ChartOptions) strin
 		buf.WriteString(`<c:invertIfNegative val="1"/>`)
 	}
 
+	// Line chart marker must be emitted before cat/val in c:ser child order.
+	if opts.ChartKind == ChartKindLine {
+		if series.ShowMarkers {
+			buf.WriteString(`<c:marker><c:symbol val="circle"/></c:marker>`)
+		} else {
+			buf.WriteString(`<c:marker><c:symbol val="none"/></c:marker>`)
+		}
+	}
+
 	// Categories
 	buf.WriteString(fmt.Sprintf(`<c:cat><c:strRef><c:f>Sheet1!$A$2:$A$%d</c:f>`, len(opts.Categories)+1))
 	buf.WriteString(fmt.Sprintf(`<c:strCache><c:ptCount val="%d"/>`, len(opts.Categories)))
@@ -1035,11 +1044,6 @@ func generateSeriesXML(index int, series SeriesOptions, opts ChartOptions) strin
 	if opts.ChartKind == ChartKindLine {
 		if series.Smooth {
 			buf.WriteString(`<c:smooth val="1"/>`)
-		}
-		if series.ShowMarkers {
-			buf.WriteString(`<c:marker><c:symbol val="circle"/></c:marker>`)
-		} else {
-			buf.WriteString(`<c:marker><c:symbol val="none"/></c:marker>`)
 		}
 	}
 

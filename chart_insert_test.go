@@ -382,6 +382,63 @@ func TestInsertChartAtBeginning(t *testing.T) {
 	}
 }
 
+func TestInsertLineChartMarkerOrderForOOXMLValidation(t *testing.T) {
+	tempDir := t.TempDir()
+	inputPath := filepath.Join(tempDir, "input.docx")
+	outputPath := filepath.Join(tempDir, "output.docx")
+
+	if err := os.WriteFile(inputPath, buildFixtureDocx(t), 0o644); err != nil {
+		t.Fatalf("write input fixture: %v", err)
+	}
+
+	u, err := godocx.New(inputPath)
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+	defer u.Cleanup()
+
+	err = u.InsertChart(godocx.ChartOptions{
+		Position:   godocx.PositionEnd,
+		Title:      "Line Chart Validation",
+		ChartKind:  godocx.ChartKindLine,
+		Categories: []string{"Jan", "Feb", "Mar"},
+		Series: []godocx.SeriesOptions{
+			{Name: "Series 1", Values: []float64{10, 20, 30}, ShowMarkers: true},
+		},
+		ShowLegend: true,
+	})
+	if err != nil {
+		t.Fatalf("InsertChart failed: %v", err)
+	}
+
+	if err := u.Save(outputPath); err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+
+	chartXML, _ := findChartXMLContaining(t, outputPath, "Line Chart Validation")
+
+	serStart := strings.Index(chartXML, "<c:ser>")
+	if serStart == -1 {
+		t.Fatal("series element not found")
+	}
+	serEnd := strings.Index(chartXML[serStart:], "</c:ser>")
+	if serEnd == -1 {
+		t.Fatal("series closing tag not found")
+	}
+	serXML := chartXML[serStart : serStart+serEnd]
+
+	markerPos := strings.Index(serXML, "<c:marker>")
+	catPos := strings.Index(serXML, "<c:cat>")
+	valPos := strings.Index(serXML, "<c:val>")
+
+	if markerPos == -1 || catPos == -1 || valPos == -1 {
+		t.Fatalf("expected marker/cat/val in line series, got: %s", serXML)
+	}
+	if markerPos > catPos || markerPos > valPos {
+		t.Fatalf("invalid line series order: marker must appear before cat/val; series XML: %s", serXML)
+	}
+}
+
 func findChartXMLContaining(t *testing.T, docxPath string, needle string) (string, string) {
 	t.Helper()
 

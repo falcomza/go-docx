@@ -123,42 +123,60 @@ func extractCategoriesFromSer(serBlocks []string, tag func(string) string, vRe *
 	if len(serBlocks) == 0 {
 		return nil
 	}
-	catOpen := "<" + tag("cat") + ">"
-	catClose := "</" + tag("cat") + ">"
-	catStart := strings.Index(serBlocks[0], catOpen)
-	catEnd := strings.LastIndex(serBlocks[0], catClose)
-	if catStart < 0 || catEnd < 0 {
-		return nil
+	first := serBlocks[0]
+
+	// Standard charts use <cat>; scatter charts typically use <xVal>.
+	if cats := extractStringValuesFromDataRef(first, tag, "cat", vRe); len(cats) > 0 {
+		return cats
 	}
-	catBlock := serBlocks[0][catStart : catEnd+len(catClose)]
-	matches := vRe.FindAllStringSubmatch(catBlock, -1)
-	cats := make([]string, 0, len(matches))
-	for _, m := range matches {
-		cats = append(cats, strings.TrimSpace(m[1]))
+	if xVals := extractStringValuesFromDataRef(first, tag, "xVal", vRe); len(xVals) > 0 {
+		return xVals
 	}
-	return cats
+
+	return nil
 }
 
 func extractSeriesValues(block string, tag func(string) string, count int, vRe *regexp.Regexp) []float64 {
-	valOpen := "<" + tag("val") + ">"
-	valClose := "</" + tag("val") + ">"
-	valStart := strings.Index(block, valOpen)
-	valEnd := strings.LastIndex(block, valClose)
-	if valStart < 0 || valEnd < 0 {
-		return make([]float64, count)
-	}
-	valBlock := block[valStart : valEnd+len(valClose)]
-	matches := vRe.FindAllStringSubmatch(valBlock, -1)
-	values := make([]float64, 0, len(matches))
-	for _, m := range matches {
-		f, _ := strconv.ParseFloat(strings.TrimSpace(m[1]), 64)
-		values = append(values, f)
+	// Standard charts use <val>; scatter charts typically use <yVal>.
+	values := extractNumericValuesFromDataRef(block, tag, "val", vRe)
+	if len(values) == 0 {
+		values = extractNumericValuesFromDataRef(block, tag, "yVal", vRe)
 	}
 	for len(values) < count {
 		values = append(values, 0)
 	}
 	if len(values) > count && count > 0 {
 		values = values[:count]
+	}
+	return values
+}
+
+func extractStringValuesFromDataRef(block string, tag func(string) string, refTag string, vRe *regexp.Regexp) []string {
+	open := "<" + tag(refTag) + ">"
+	close := "</" + tag(refTag) + ">"
+	start := strings.Index(block, open)
+	end := strings.LastIndex(block, close)
+	if start < 0 || end < 0 {
+		return nil
+	}
+	dataBlock := block[start : end+len(close)]
+	matches := vRe.FindAllStringSubmatch(dataBlock, -1)
+	vals := make([]string, 0, len(matches))
+	for _, m := range matches {
+		vals = append(vals, strings.TrimSpace(m[1]))
+	}
+	return vals
+}
+
+func extractNumericValuesFromDataRef(block string, tag func(string) string, refTag string, vRe *regexp.Regexp) []float64 {
+	stringVals := extractStringValuesFromDataRef(block, tag, refTag, vRe)
+	values := make([]float64, 0, len(stringVals))
+	for _, v := range stringVals {
+		f, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			f = 0
+		}
+		values = append(values, f)
 	}
 	return values
 }
