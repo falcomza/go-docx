@@ -210,8 +210,13 @@ func mergeCompatibleRuns(para []byte) []byte {
 		needPreserve: spans[0].needPreserve,
 	}
 	for i := 1; i < len(spans); i++ {
-		if spans[i].rpr == cur.rpr {
-			// Same run properties — extend the current merged group.
+		// Only merge if (a) same run properties AND (b) nothing between the two
+		// runs except optional whitespace. Any XML tag between them (e.g.,
+		// </w:hyperlink>, <w:bookmarkEnd/>, </w:ins>) means the runs are in
+		// different structural contexts and must not be collapsed.
+		between := s[cur.end:spans[i].start]
+		if spans[i].rpr == cur.rpr && !strings.ContainsAny(between, "<>") {
+			// Same run properties with no intervening markup — safe to merge.
 			cur.end = spans[i].end
 			cur.text += spans[i].text
 			if spans[i].needPreserve {

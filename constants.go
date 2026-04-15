@@ -126,7 +126,6 @@ const (
 // embeddingFilePattern matches numbered embedding filenames (e.g., embedding1.xlsx).
 var embeddingFilePattern = regexp.MustCompile(`^embedding(\d+)\.xlsx$`)
 
-
 // OpenXML content types
 const (
 	ChartContentType = "application/vnd.openxmlformats-officedocument.drawingml.chart+xml"
@@ -138,9 +137,9 @@ const (
 	// New() automatically promotes this to DocxMainContentType so templates can be
 	// used as input without any special handling by the caller.
 	DotxMainContentType = "application/vnd.openxmlformats-officedocument.wordprocessingml.template.main+xml"
-	ImageJPEGType    = "image/jpeg"
-	ImagePNGType     = "image/png"
-	ImageGIFType     = "image/gif"
-	ImageBMPType     = "image/bmp"
-	ImageTIFFType    = "image/tiff"
+	ImageJPEGType       = "image/jpeg"
+	ImagePNGType        = "image/png"
+	ImageGIFType        = "image/gif"
+	ImageBMPType        = "image/bmp"
+	ImageTIFFType       = "image/tiff"
 )
