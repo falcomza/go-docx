@@ -7,6 +7,7 @@ import (
 	"testing"
 )
 
+
 func TestForceFieldUpdateOnOpen_BlankDocument(t *testing.T) {
 	u, err := NewBlank()
 	if err != nil {
@@ -90,6 +91,112 @@ func TestForceFieldUpdateOnOpen_ExistingSettings(t *testing.T) {
 	// Original content preserved
 	if !strings.Contains(content, "w:defaultTabStop") {
 		t.Error("existing settings content was lost")
+	}
+}
+
+func TestForceFieldUpdateOnOpen_MarksHeaderFooterFieldsDirty(t *testing.T) {
+	u, err := NewBlank()
+	if err != nil {
+		t.Fatalf("NewBlank: %v", err)
+	}
+	defer u.Cleanup()
+
+	// Add a header with a PAGE field so there is a header file to process.
+	err = u.SetHeader(HeaderFooterContent{PageNumber: true}, DefaultHeaderOptions())
+	if err != nil {
+		t.Fatalf("SetHeader: %v", err)
+	}
+
+	if err := u.ForceFieldUpdateOnOpen(); err != nil {
+		t.Fatalf("ForceFieldUpdateOnOpen: %v", err)
+	}
+
+	// Verify the header XML carries w:dirty="true".
+	entries, _ := os.ReadDir(filepath.Join(u.tempDir, "word"))
+	found := false
+	for _, entry := range entries {
+		name := entry.Name()
+		if (!strings.HasPrefix(name, "header") && !strings.HasPrefix(name, "footer")) ||
+			!strings.HasSuffix(name, ".xml") {
+			continue
+		}
+		raw, _ := os.ReadFile(filepath.Join(u.tempDir, "word", name))
+		if strings.Contains(string(raw), `w:dirty="true"`) {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("no header/footer XML contains w:dirty=\"true\" after ForceFieldUpdateOnOpen")
+	}
+}
+
+func TestForceFieldUpdateOnOpen_TemplatHeaderFieldsMarkedDirty(t *testing.T) {
+	u, err := NewBlank()
+	if err != nil {
+		t.Fatalf("NewBlank: %v", err)
+	}
+	defer u.Cleanup()
+
+	// Simulate a template-provided header that has a field without w:dirty.
+	headerPath := filepath.Join(u.tempDir, "word", "header3.xml")
+	templateHeader := `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+<w:p>
+<w:r><w:fldChar w:fldCharType="begin"/></w:r>
+<w:r><w:instrText xml:space="preserve"> PAGE </w:instrText></w:r>
+<w:r><w:fldChar w:fldCharType="separate"/></w:r>
+<w:r><w:t>1</w:t></w:r>
+<w:r><w:fldChar w:fldCharType="end"/></w:r>
+</w:p>
+</w:hdr>`
+	if err := os.WriteFile(headerPath, []byte(templateHeader), 0o644); err != nil {
+		t.Fatalf("write template header: %v", err)
+	}
+
+	if err := u.ForceFieldUpdateOnOpen(); err != nil {
+		t.Fatalf("ForceFieldUpdateOnOpen: %v", err)
+	}
+
+	raw, _ := os.ReadFile(headerPath)
+	if !strings.Contains(string(raw), `w:dirty="true"`) {
+		t.Error("template-provided header field was not marked dirty")
+	}
+	// Ensure the rest of the content is preserved.
+	if !strings.Contains(string(raw), `w:fldCharType="separate"`) {
+		t.Error("template header content was unexpectedly modified")
+	}
+}
+
+func TestForceFieldUpdateOnOpen_IdempotentOnDirtyFields(t *testing.T) {
+	u, err := NewBlank()
+	if err != nil {
+		t.Fatalf("NewBlank: %v", err)
+	}
+	defer u.Cleanup()
+
+	headerPath := filepath.Join(u.tempDir, "word", "header3.xml")
+	alreadyDirty := `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+<w:p>
+<w:r><w:fldChar w:fldCharType="begin" w:dirty="true"/></w:r>
+<w:r><w:instrText xml:space="preserve"> PAGE </w:instrText></w:r>
+<w:r><w:fldChar w:fldCharType="end"/></w:r>
+</w:p>
+</w:hdr>`
+	if err := os.WriteFile(headerPath, []byte(alreadyDirty), 0o644); err != nil {
+		t.Fatalf("write header: %v", err)
+	}
+
+	for range 3 {
+		if err := u.ForceFieldUpdateOnOpen(); err != nil {
+			t.Fatalf("ForceFieldUpdateOnOpen: %v", err)
+		}
+	}
+
+	raw, _ := os.ReadFile(headerPath)
+	count := strings.Count(string(raw), `w:dirty="true"`)
+	if count != 1 {
+		t.Errorf("expected exactly 1 w:dirty attribute, got %d", count)
 	}
 }
 
