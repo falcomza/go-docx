@@ -19,59 +19,72 @@ const (
 var (
 	docxUpdateBulletNumIDPattern   = regexp.MustCompile(`DOCXUPDATE_BULLET_NUMID:(\d+)`)
 	docxUpdateNumberedNumIDPattern = regexp.MustCompile(`DOCXUPDATE_NUMBERED_NUMID:(\d+)`)
+	docxUpdateHeadingNumIDPattern  = regexp.MustCompile(`DOCXUPDATE_HEADING_NUMID:(\d+)`)
 	numIDPattern                   = regexp.MustCompile(`w:numId="(\d+)"`)
 	abstractNumIDPattern           = regexp.MustCompile(`w:abstractNumId="(\d+)"`)
 	// abstractNumRefPattern matches the child element <w:abstractNumId w:val="N"/> inside a <w:num> block.
 	abstractNumRefPattern = regexp.MustCompile(`<w:abstractNumId[^>]+w:val="(\d+)"`)
+	lvlJcStartPattern     = regexp.MustCompile(`(<w:lvlJc\b[^>]*\bw:val=")start(")`)
+	lvlJcEndPattern       = regexp.MustCompile(`(<w:lvlJc\b[^>]*\bw:val=")end(")`)
 )
 
-// ensureNumberingXML ensures numbering.xml exists with bullet and numbered list support
-func (u *Updater) ensureNumberingXML() error {
+// ensureNumberingXML ensures numbering.xml exists with bullet and numbered list support.
+// It returns the final content of numbering.xml so callers can avoid a second read.
+func (u *Updater) ensureNumberingXML() ([]byte, error) {
 	numberingPath := filepath.Join(u.tempDir, "word", "numbering.xml")
 
+	var finalContent []byte
 	if data, err := os.ReadFile(numberingPath); err == nil {
-		content := string(data)
+		// Normalize invalid w:lvlJc values emitted by LibreOffice.
+		// OOXML ST_Jc only accepts "left"/"right"; LibreOffice uses CSS logical "start"/"end".
+		content := normalizeLvlJcValues(string(data))
+		if content != string(data) {
+			if err := atomicWriteFile(numberingPath, []byte(content), 0o644); err != nil {
+				return nil, fmt.Errorf("normalize numbering.xml: %w", err)
+			}
+		}
 
 		if bulletID, numberedID, ok := extractDocxUpdateNumberingIDs(content); ok {
 			u.setListNumberingIDs(bulletID, numberedID)
-		} else if hasLegacyManagedNumbering(content) {
-			u.setListNumberingIDs(BulletListNumID, NumberedListNumID)
+			finalContent = data
 		} else {
 			updated, bulletID, numberedID, appendErr := appendDocxUpdateNumberingDefinitions(content)
 			if appendErr != nil {
-				return fmt.Errorf("append numbering definitions: %w", appendErr)
+				return nil, fmt.Errorf("append numbering definitions: %w", appendErr)
 			}
 			if err := atomicWriteFile(numberingPath, []byte(updated), 0o644); err != nil {
-				return fmt.Errorf("write numbering.xml: %w", err)
+				return nil, fmt.Errorf("write numbering.xml: %w", err)
 			}
 			u.setListNumberingIDs(bulletID, numberedID)
+			finalContent = []byte(updated)
 		}
 	} else if !os.IsNotExist(err) {
-		return fmt.Errorf("read numbering.xml: %w", err)
+		return nil, fmt.Errorf("read numbering.xml: %w", err)
 	} else {
 		numberingXML := generateNumberingXML()
 		if err := atomicWriteFile(numberingPath, []byte(numberingXML), 0o644); err != nil {
-			return fmt.Errorf("write numbering.xml: %w", err)
+			return nil, fmt.Errorf("write numbering.xml: %w", err)
 		}
 		u.setListNumberingIDs(BulletListNumID, NumberedListNumID)
+		finalContent = []byte(numberingXML)
 	}
 
 	// Update content types if needed
 	if err := u.ensureNumberingContentType(); err != nil {
-		return fmt.Errorf("update content types: %w", err)
+		return nil, fmt.Errorf("update content types: %w", err)
 	}
 
 	// Update document.xml.rels if needed
 	if err := u.ensureNumberingRelationship(); err != nil {
-		return fmt.Errorf("update relationships: %w", err)
+		return nil, fmt.Errorf("update relationships: %w", err)
 	}
 
 	// Ensure ListParagraph style is defined in styles.xml
 	if err := u.ensureListParagraphStyle(); err != nil {
-		return fmt.Errorf("ensure ListParagraph style: %w", err)
+		return nil, fmt.Errorf("ensure ListParagraph style: %w", err)
 	}
 
-	return nil
+	return finalContent, nil
 }
 
 // generateNumberingXML creates a complete numbering.xml with bullet and numbered list definitions
@@ -92,60 +105,76 @@ func generateNumberingXML() string {
 func generateDocxUpdateNumberingDefinitions(bulletAbstractID, numberedAbstractID, bulletNumID, numberedNumID int) string {
 	var buf bytes.Buffer
 
-	bulletSymbols := []string{"●", "○", "■", "●", "○", "■", "●", "○", "■"}
-	bulletFonts := []string{"Symbol", "Courier New", "Wingdings", "", "", "", "", "", ""}
+	// Symbol/Wingdings use legacy code page mappings, not Unicode: U+F0B7/U+F0A7 are
+	// the private-use-area codepoints that map to bullet glyphs in those fonts.
+	baseSymbols := [3]string{"\uF0B7", "o", "\uF0A7"}
+	baseFonts := [3]string{"Symbol", "Courier New", "Wingdings"}
 
 	buf.WriteString("\n  <!-- Abstract Numbering Definition for Bullets -->\n")
-	buf.WriteString(fmt.Sprintf("  <w:abstractNum w:abstractNumId=\"%d\">\n", bulletAbstractID))
+	fmt.Fprintf(&buf, "  <w:abstractNum w:abstractNumId=\"%d\">\n", bulletAbstractID)
 	buf.WriteString("    <w:multiLevelType w:val=\"hybridMultilevel\"/>\n")
 	for level := 0; level <= 8; level++ {
 		left := 720 * (level + 1)
-		buf.WriteString(fmt.Sprintf("    <w:lvl w:ilvl=\"%d\">\n", level))
+		fmt.Fprintf(&buf, "    <w:lvl w:ilvl=\"%d\">\n", level)
 		buf.WriteString("      <w:start w:val=\"1\"/>\n")
 		buf.WriteString("      <w:numFmt w:val=\"bullet\"/>\n")
-		buf.WriteString(fmt.Sprintf("      <w:lvlText w:val=\"%s\"/>\n", bulletSymbols[level]))
+		fmt.Fprintf(&buf, "      <w:lvlText w:val=\"%s\"/>\n", baseSymbols[level%3])
 		buf.WriteString("      <w:lvlJc w:val=\"left\"/>\n")
 		buf.WriteString("      <w:pPr>\n")
-		buf.WriteString(fmt.Sprintf("        <w:ind w:left=\"%d\" w:hanging=\"360\"/>\n", left))
+		fmt.Fprintf(&buf, "        <w:ind w:left=\"%d\" w:hanging=\"360\"/>\n", left)
 		buf.WriteString("      </w:pPr>\n")
-		if font := bulletFonts[level]; font != "" {
+		if font := baseFonts[level%3]; font != "" {
 			buf.WriteString("      <w:rPr>\n")
-			buf.WriteString(fmt.Sprintf("        <w:rFonts w:ascii=\"%s\" w:hAnsi=\"%s\" w:hint=\"default\"/>\n", font, font))
+			fmt.Fprintf(&buf, "        <w:rFonts w:ascii=\"%s\" w:hAnsi=\"%s\" w:hint=\"default\"/>\n", font, font)
 			buf.WriteString("      </w:rPr>\n")
 		}
 		buf.WriteString("    </w:lvl>\n")
 	}
 	buf.WriteString("  </w:abstractNum>\n")
 
-	numberedFormats := []string{"decimal", "lowerLetter", "lowerRoman", "decimal", "lowerLetter", "lowerRoman", "decimal", "lowerLetter", "lowerRoman"}
-	numberedTexts := []string{"%1.", "%2.", "%3.", "%4)", "(%5)", "(%6)", "%7.", "%8.", "%9."}
+	numberedFormats := []string{
+		"decimal", "decimal", "decimal", "decimal", "decimal",
+		"decimal", "decimal", "decimal", "decimal",
+	}
+
+	numberedTexts := []string{
+		"%1.",
+		"%1.%2.",
+		"%1.%2.%3.",
+		"%1.%2.%3.%4.",
+		"%1.%2.%3.%4.%5.",
+		"%1.%2.%3.%4.%5.%6.",
+		"%1.%2.%3.%4.%5.%6.%7.",
+		"%1.%2.%3.%4.%5.%6.%7.%8.",
+		"%1.%2.%3.%4.%5.%6.%7.%8.%9.",
+	}
 
 	buf.WriteString("\n  <!-- Abstract Numbering Definition for Numbered Lists -->\n")
-	buf.WriteString(fmt.Sprintf("  <w:abstractNum w:abstractNumId=\"%d\">\n", numberedAbstractID))
+	fmt.Fprintf(&buf, "  <w:abstractNum w:abstractNumId=\"%d\">\n", numberedAbstractID)
 	buf.WriteString("    <w:multiLevelType w:val=\"hybridMultilevel\"/>\n")
 	for level := 0; level <= 8; level++ {
 		left := 720 * (level + 1)
-		buf.WriteString(fmt.Sprintf("    <w:lvl w:ilvl=\"%d\">\n", level))
+		fmt.Fprintf(&buf, "    <w:lvl w:ilvl=\"%d\">\n", level)
 		buf.WriteString("      <w:start w:val=\"1\"/>\n")
-		buf.WriteString(fmt.Sprintf("      <w:numFmt w:val=\"%s\"/>\n", numberedFormats[level]))
-		buf.WriteString(fmt.Sprintf("      <w:lvlText w:val=\"%s\"/>\n", numberedTexts[level]))
+		fmt.Fprintf(&buf, "      <w:numFmt w:val=\"%s\"/>\n", numberedFormats[level])
+		fmt.Fprintf(&buf, "      <w:lvlText w:val=\"%s\"/>\n", numberedTexts[level])
 		buf.WriteString("      <w:lvlJc w:val=\"left\"/>\n")
 		buf.WriteString("      <w:pPr>\n")
-		buf.WriteString(fmt.Sprintf("        <w:ind w:left=\"%d\" w:hanging=\"360\"/>\n", left))
+		fmt.Fprintf(&buf, "        <w:ind w:left=\"%d\" w:hanging=\"360\"/>\n", left)
 		buf.WriteString("      </w:pPr>\n")
 		buf.WriteString("    </w:lvl>\n")
 	}
 	buf.WriteString("  </w:abstractNum>\n")
 
 	buf.WriteString("\n")
-	buf.WriteString(fmt.Sprintf("  <!-- DOCXUPDATE_BULLET_NUMID:%d -->\n", bulletNumID))
-	buf.WriteString(fmt.Sprintf("  <w:num w:numId=\"%d\">\n", bulletNumID))
-	buf.WriteString(fmt.Sprintf("    <w:abstractNumId w:val=\"%d\"/>\n", bulletAbstractID))
+	fmt.Fprintf(&buf, "  <!-- DOCXUPDATE_BULLET_NUMID:%d -->\n", bulletNumID)
+	fmt.Fprintf(&buf, "  <w:num w:numId=\"%d\">\n", bulletNumID)
+	fmt.Fprintf(&buf, "    <w:abstractNumId w:val=\"%d\"/>\n", bulletAbstractID)
 	buf.WriteString("  </w:num>\n")
 
-	buf.WriteString(fmt.Sprintf("  <!-- DOCXUPDATE_NUMBERED_NUMID:%d -->\n", numberedNumID))
-	buf.WriteString(fmt.Sprintf("  <w:num w:numId=\"%d\">\n", numberedNumID))
-	buf.WriteString(fmt.Sprintf("    <w:abstractNumId w:val=\"%d\"/>\n", numberedAbstractID))
+	fmt.Fprintf(&buf, "  <!-- DOCXUPDATE_NUMBERED_NUMID:%d -->\n", numberedNumID)
+	fmt.Fprintf(&buf, "  <w:num w:numId=\"%d\">\n", numberedNumID)
+	fmt.Fprintf(&buf, "    <w:abstractNumId w:val=\"%d\"/>\n", numberedAbstractID)
 	buf.WriteString("  </w:num>\n")
 
 	return buf.String()
@@ -173,33 +202,55 @@ func extractDocxUpdateNumberingIDs(content string) (int, int, bool) {
 	return bulletID, numberedID, true
 }
 
-func hasLegacyManagedNumbering(content string) bool {
-	return strings.Contains(content, `<w:num w:numId="1">`) &&
-		strings.Contains(content, `<w:num w:numId="2">`) &&
-		strings.Contains(content, `<w:abstractNumId w:val="0"/>`) &&
-		strings.Contains(content, `<w:abstractNumId w:val="1"/>`) &&
-		strings.Contains(content, `w:numFmt w:val="bullet"`) &&
-		strings.Contains(content, `w:numFmt w:val="decimal"`)
-}
-
-func appendDocxUpdateNumberingDefinitions(content string) (string, int, int, error) {
+// appendToNumberingXML inserts generated XML (which may contain both <w:abstractNum> and
+// <w:num> elements) at the correct schema-compliant position.
+//
+// OOXML CT_Numbering (ECMA-376 §17.9.17) requires all <w:abstractNum> elements to appear
+// before any <w:num> elements. To satisfy this constraint the generated block is inserted
+// before the first existing <w:num> element (falling back to before </w:numbering> when
+// there are no existing <w:num> entries).
+//
+// generateFn receives the next available abstractNumId and numId and returns the XML to insert.
+// It returns the updated content and the two IDs that were allocated (abstractID, numID).
+func appendToNumberingXML(content string, generateFn func(abstractID, numID int) string) (string, int, int, error) {
 	closingTag := "</w:numbering>"
-	insertPos := strings.LastIndex(content, closingTag)
+
+	abstractID := findMaxXMLAttributeInt(content, abstractNumIDPattern) + 1
+	numID := findMaxXMLAttributeInt(content, numIDPattern) + 1
+
+	definitions := generateFn(abstractID, numID)
+
+	// Insert before the first <w:num so that any new <w:abstractNum> entries in definitions
+	// precede all existing <w:num> entries — required by the OOXML schema.
+	insertPos := strings.Index(content, "<w:num ")
+	if insertPos == -1 {
+		// No existing <w:num>; fall back to just before </w:numbering>.
+		insertPos = strings.LastIndex(content, closingTag)
+	}
 	if insertPos == -1 {
 		return "", 0, 0, fmt.Errorf("invalid numbering.xml: missing </w:numbering>")
 	}
 
-	maxNumID := findMaxXMLAttributeInt(content, numIDPattern)
+	updated := content[:insertPos] + definitions + "\n" + content[insertPos:]
+	return updated, abstractID, numID, nil
+}
+
+func appendDocxUpdateNumberingDefinitions(content string) (string, int, int, error) {
 	maxAbstractNumID := findMaxXMLAttributeInt(content, abstractNumIDPattern)
+	maxNumID := findMaxXMLAttributeInt(content, numIDPattern)
 
 	bulletAbstractID := maxAbstractNumID + 1
 	numberedAbstractID := maxAbstractNumID + 2
 	bulletNumID := maxNumID + 1
 	numberedNumID := maxNumID + 2
 
-	definitions := generateDocxUpdateNumberingDefinitions(bulletAbstractID, numberedAbstractID, bulletNumID, numberedNumID)
-	updated := content[:insertPos] + definitions + "\n" + content[insertPos:]
-
+	gen := func(_, _ int) string {
+		return generateDocxUpdateNumberingDefinitions(bulletAbstractID, numberedAbstractID, bulletNumID, numberedNumID)
+	}
+	updated, _, _, err := appendToNumberingXML(content, gen)
+	if err != nil {
+		return "", 0, 0, err
+	}
 	return updated, bulletNumID, numberedNumID, nil
 }
 
@@ -255,10 +306,20 @@ func allocateRestartNumIDInContent(content string, numberedNumID, level int) (in
 	return newNumID, updated, nil
 }
 
-// allocateRestartNumID appends a new <w:num> entry to numbering.xml that references
+// AllocateRestartNumID appends a new <w:num> entry to numbering.xml that references
 // the same abstractNumId as the current numbered list but adds a
 // <w:lvlOverride><w:startOverride w:val="1"/></w:lvlOverride> for the given level.
 // It returns the newly allocated numId. ensureNumberingXML must have been called first.
+//
+// Use this to get a fresh numId for a new numbered-list sequence. Pass the returned
+// numId as ParagraphOptions.OverrideNumID for every item in the sequence so that all
+// items share the same counter (which restarts from 1) instead of accumulating on the
+// shared base numberedListNumID.
+func (u *Updater) AllocateRestartNumID(level int) (int, error) {
+	return u.allocateRestartNumID(level)
+}
+
+// allocateRestartNumID is the internal implementation; see AllocateRestartNumID for docs.
 func (u *Updater) allocateRestartNumID(level int) (int, error) {
 	numberingPath := filepath.Join(u.tempDir, "word", "numbering.xml")
 	data, err := os.ReadFile(numberingPath)
@@ -449,4 +510,109 @@ func generateMinimalStylesXMLWithListParagraph() string {
 	buf.WriteString(generateListParagraphStyleXML())
 	buf.WriteString("</w:styles>")
 	return buf.String()
+}
+
+// generateHeadingOutlineXML creates the abstractNum + num definitions for heading outline
+// numbering (1 / 1.1 / 1.1.1 …). The DOCXUPDATE_HEADING_NUMID comment acts as the
+// idempotency marker so the definitions are only appended once per document.
+func generateHeadingOutlineXML(abstractID, numID int) string {
+	var buf bytes.Buffer
+
+	// Precomputed lvlText patterns with trailing dots: "1." / "1.2." / "1.2.3." / …
+	lvlTexts := [9]string{
+		"%1.",
+		"%1.%2.",
+		"%1.%2.%3.",
+		"%1.%2.%3.%4.",
+		"%1.%2.%3.%4.%5.",
+		"%1.%2.%3.%4.%5.%6.",
+		"%1.%2.%3.%4.%5.%6.%7.",
+		"%1.%2.%3.%4.%5.%6.%7.%8.",
+		"%1.%2.%3.%4.%5.%6.%7.%8.%9.",
+	}
+
+	buf.WriteString("\n  <!-- Abstract Numbering Definition for Heading Outline -->\n")
+	fmt.Fprintf(&buf, "  <w:abstractNum w:abstractNumId=\"%d\">\n", abstractID)
+	buf.WriteString("    <w:multiLevelType w:val=\"multilevel\"/>\n")
+	for level := 0; level <= 8; level++ {
+		// OOXML CT_Lvl child order (ECMA-376 §17.9.6): start, numFmt, lvlText, lvlJc, pPr
+		// NOTE: <w:pStyle> is intentionally omitted. Linking an abstractNum level to a
+		// heading style via <w:pStyle> creates a style-list connection that causes Word
+		// to override the indentation of ALL paragraphs using that style — including
+		// those already defined in the uploaded template. Since we apply <w:numPr>
+		// explicitly on each heading paragraph, the pStyle link is not required for
+		// correct cascade numbering and its absence preserves template-defined indentation.
+		//
+		// <w:ind w:left="0" w:hanging="0"/> is explicitly set so that Word does not apply
+		// its internal default indentation (720 * (ilvl+1) twips) for numbered list levels.
+		// LibreOffice ignores the missing indent, but Word applies it unless suppressed here.
+		// Priority (ECMA-376 §17.3.1): numbering-level pPr < paragraph style < direct fmt,
+		// so templates that define their own Heading indent will still take precedence.
+		fmt.Fprintf(&buf, "    <w:lvl w:ilvl=\"%d\">\n", level)
+		buf.WriteString("      <w:start w:val=\"1\"/>\n")
+		buf.WriteString("      <w:numFmt w:val=\"decimal\"/>\n")
+		fmt.Fprintf(&buf, "      <w:lvlText w:val=\"%s\"/>\n", lvlTexts[level])
+		buf.WriteString("      <w:lvlJc w:val=\"left\"/>\n")
+		buf.WriteString("      <w:pPr>\n")
+		buf.WriteString("        <w:ind w:left=\"0\" w:hanging=\"0\"/>\n")
+		buf.WriteString("      </w:pPr>\n")
+		buf.WriteString("    </w:lvl>\n")
+	}
+	buf.WriteString("  </w:abstractNum>\n")
+
+	fmt.Fprintf(&buf, "\n  <!-- DOCXUPDATE_HEADING_NUMID:%d -->\n", numID)
+	fmt.Fprintf(&buf, "  <w:num w:numId=\"%d\">\n", numID)
+	fmt.Fprintf(&buf, "    <w:abstractNumId w:val=\"%d\"/>\n", abstractID)
+	buf.WriteString("  </w:num>\n")
+
+	return buf.String()
+}
+
+// ensureHeadingOutlineNumbering guarantees that a multi-level heading outline
+// numbering definition exists in numbering.xml and returns its numId.
+// Idempotent: a second call returns the cached ID without re-reading the file.
+func (u *Updater) ensureHeadingOutlineNumbering() (int, error) {
+	if u.headingNumID > 0 {
+		return u.headingNumID, nil
+	}
+
+	// Ensure numbering.xml itself exists first; reuse the returned content to avoid a second read.
+	data, err := u.ensureNumberingXML()
+	if err != nil {
+		return 0, fmt.Errorf("ensure numbering XML: %w", err)
+	}
+	content := string(data)
+
+	// If the marker already exists, just cache and return the ID.
+	if match := docxUpdateHeadingNumIDPattern.FindStringSubmatch(content); len(match) >= 2 {
+		id, err := strconv.Atoi(match[1])
+		if err != nil || id <= 0 {
+			return 0, fmt.Errorf("invalid DOCXUPDATE_HEADING_NUMID value: %s", match[1])
+		}
+		u.headingNumID = id
+		return id, nil
+	}
+
+	// Append new heading outline definitions.
+	updated, _, numID, err := appendToNumberingXML(content, generateHeadingOutlineXML)
+	if err != nil {
+		return 0, err
+	}
+
+	if err := atomicWriteFile(filepath.Join(u.tempDir, "word", "numbering.xml"), []byte(updated), 0o644); err != nil {
+		return 0, fmt.Errorf("write numbering.xml: %w", err)
+	}
+
+	u.headingNumID = numID
+	return numID, nil
+}
+
+// normalizeLvlJcValues replaces invalid w:lvlJc values emitted by LibreOffice.
+// OOXML ST_Jc only accepts "left" and "right"; LibreOffice uses CSS logical
+// keywords "start" and "end". This normalisation is applied once when numbering.xml
+// is first read so that the generated document passes Microsoft365 schema validation.
+func normalizeLvlJcValues(content string) string {
+	content = lvlJcStartPattern.ReplaceAllString(content, `${1}left${2}`)
+	content = lvlJcEndPattern.ReplaceAllString(content, `${1}right${2}`)
+	return content
 }

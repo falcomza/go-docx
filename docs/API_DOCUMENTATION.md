@@ -1,9 +1,9 @@
 # DOCX Chart Updater - API Documentation
 
-## Go Fiber Backend Integration Guide
+## Go Backend Integration Guide
 
 **Version**: 1.0.0
-**Go Version**: 1.25.7+
+**Go Version**: 1.26+
 **Import Path**: `github.com/falcomza/go-docx`
 
 ---
@@ -15,7 +15,7 @@
 3. [Quick Start](#quick-start)
 4. [Core Concepts](#core-concepts)
 5. [API Reference](#api-reference)
-6. [Fiber Integration](#fiber-integration)
+6. [Web Framework Integration (Optional)](#web-framework-integration-optional)
 7. [Error Handling](#error-handling)
 8. [Best Practices](#best-practices)
 9. [Performance Considerations](#performance-considerations)
@@ -57,7 +57,7 @@ The DOCX Chart Updater is a Go library for programmatically manipulating Microso
 | **Table Merge** | `MergeTableCellsHorizontal()`, `MergeTableCellsVertical()` |
 | **Count** | `GetChartCount()`, `GetTableCount()`, `GetParagraphCount()`, `GetImageCount()` |
 | **Chart Reading** | `GetChartData()` |
-| **TOC** | `InsertTOC()`, `UpdateTOC()`, `GetTOCEntries()` |
+| **TOC** | `InsertTOC()`, `InsertTableOfFigures()`, `InsertTableOfTables()`, `UpdateTOC()`, `GetTOCEntries()` |
 | **Footnotes/Endnotes** | `InsertFootnote()`, `InsertEndnote()` |
 | **Comments** | `InsertComment()`, `GetComments()` |
 | **Styles** | `AddStyle()`, `AddStyles()` |
@@ -69,7 +69,16 @@ The DOCX Chart Updater is a Go library for programmatically manipulating Microso
 - **1-based Indexing**: Chart indices start at 1, not 0
 - **Strict Validation**: Fails fast on invalid input with descriptive errors
 - **Resource Management**: Always use `defer updater.Cleanup()` for temp file cleanup
-- **Thread-Safe**: Each `Updater` instance operates on isolated temp directories
+- **Concurrency Model**: Updater instances are isolated by temp directory, but a single `Updater` instance is not goroutine-safe
+
+### OOXML Compatibility Constraints
+
+- `UpdateChart` requires valid chart-to-workbook relationships via `<c:externalData>` and `chartN.xml.rels`.
+- Inserted chart workbooks align series headers/data columns with chart formulas (`B..` for regular charts, `C..` when scatter X values occupy column `B`).
+- Line chart series emit `c:marker` in schema-compliant `c:ser` child order for Microsoft 365 validation.
+- `GetChartData` reads chart titles from both rich text (`a:t`) and value (`c:v`) title representations.
+- Chart XML series and embedded workbook `sheetData` are regenerated during updates; workbook styling/formatting is not preserved.
+- Namespace prefix normalization and prefix differences in output XML are expected and standards-compliant.
 
 ---
 
@@ -177,6 +186,11 @@ word/charts/chart1.xml
 ```
 
 The library resolves these relationships automatically—no manual path handling required.
+
+### Caption-Based Lists
+
+`InsertTableOfFigures` and `InsertTableOfTables` generate Word field codes that build lists from caption labels created with `SEQ Figure` and `SEQ Table` fields.
+As with a normal TOC, Word populates these lists when the field is updated on open.
 
 ---
 
@@ -1040,7 +1054,11 @@ Returns the number of images in the document.
 
 #### `GetChartData(chartIndex int) (ChartData, error)`
 
-Reads the categories, series names, and values from an existing chart.
+Reads chart title, categories, series names, and values from an existing chart.
+
+Notes:
+- Supports chart titles stored as rich text (`a:t`) or value text (`c:v`).
+- Supports scatter charts by reading `xVal`/`yVal` when `cat`/`val` are not present.
 
 **Example:**
 ```go
@@ -1078,6 +1096,30 @@ updater.InsertTOC(godocx.TOCOptions{
     OutlineLevels: "1-3",
     Position:      godocx.PositionBeginning,
 })
+```
+
+#### `InsertTableOfFigures(opts CaptionListOptions) error`
+
+Inserts a caption-based list field for `Figure` captions.
+
+#### `InsertTableOfTables(opts CaptionListOptions) error`
+
+Inserts a caption-based list field for `Table` captions.
+
+**CaptionListOptions:**
+```go
+type CaptionListOptions struct {
+    Title    string
+    Position InsertPosition
+    Anchor   string
+}
+```
+
+**Example:**
+```go
+updater.InsertTableOfFigures(godocx.DefaultTableOfFiguresOptions())
+updater.InsertTableOfTables(godocx.DefaultTableOfTablesOptions())
+updater.UpdateTOC()
 ```
 
 #### `UpdateTOC() error`
@@ -1352,7 +1394,9 @@ updater.InsertChart(godocx.ChartOptions{
 
 ---
 
-## Fiber Integration
+## Web Framework Integration (Optional)
+
+The examples below use Fiber, but the same patterns apply to Gin, Echo, Chi, net/http, or any other Go web framework.
 
 ### Basic HTTP Handler
 

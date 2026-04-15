@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -24,6 +25,14 @@ type Updater struct {
 
 	bulletListNumID   int
 	numberedListNumID int
+	headingNumID      int
+
+	noteRefStylesEnsured bool
+
+	// headingNumberingDisabled suppresses <w:numPr> injection in AddHeading so that
+	// the document's own heading styles (e.g. from an uploaded template) control all
+	// formatting. When true, AddHeading emits only <w:pStyle> for the heading level.
+	headingNumberingDisabled bool
 }
 
 // NewBlank creates a new blank DOCX document from scratch without requiring a template.
@@ -118,6 +127,22 @@ func New(docxPath string) (*Updater, error) {
 	if err := normalizeWMLNamespacePrefix(tempDir); err != nil {
 		os.RemoveAll(tempDir)
 		return nil, fmt.Errorf("normalize WML namespace: %w", err)
+	}
+
+	// Normalize invalid w:characterSet values in fontTable.xml.
+	// LibreOffice emits IANA charset names (e.g. "utf-8", "windows-1252") but
+	// OOXML ST_UcharHexNumber requires 2-digit Windows charset IDs in hex.
+	if err := normalizeFontTableCharsets(tempDir); err != nil {
+		os.RemoveAll(tempDir)
+		return nil, fmt.Errorf("normalize fontTable charsets: %w", err)
+	}
+
+	// Normalize invalid w:lvlJc values in numbering.xml (e.g. "start"/"end"
+	// emitted by LibreOffice) so documents validate in Microsoft 365 even when
+	// callers do not invoke list APIs.
+	if err := normalizeNumberingLvlJc(tempDir); err != nil {
+		os.RemoveAll(tempDir)
+		return nil, fmt.Errorf("normalize numbering lvlJc: %w", err)
 	}
 
 	u := &Updater{originalPath: docxPath, tempDir: tempDir}
@@ -459,6 +484,58 @@ func normalizeWMLNamespacePrefix(tempDir string) error {
 		return nil
 	}
 	return atomicWriteFile(docPath, []byte(content), 0o644)
+}
+
+// normalizeFontTableCharsets rewrites invalid w:characterSet values in fontTable.xml.
+// LibreOffice emits IANA charset names (e.g. "utf-8", "windows-1252") but OOXML
+// ST_UcharHexNumber requires 2-digit uppercase hex Windows charset IDs.
+// Unknown IANA names are replaced with "00" (ANSI_CHARSET — safe fallback).
+func normalizeFontTableCharsets(tempDir string) error {
+	ftPath := filepath.Join(tempDir, "word", "fontTable.xml")
+	data, err := os.ReadFile(ftPath)
+	if os.IsNotExist(err) {
+		return nil // no fontTable — nothing to normalize
+	}
+	if err != nil {
+		return fmt.Errorf("read fontTable.xml: %w", err)
+	}
+
+	content := string(data)
+	// LibreOffice adds a non-standard w:characterSet="..." attribute alongside the
+	// already-valid w:val="XX" attribute on <w:charset> elements. The validator
+	// rejects the IANA name values AND having two w:val attributes if we naively
+	// replace it. The correct fix is to simply strip the extra attribute entirely:
+	// the existing w:val already carries the correct Windows charset ID.
+	reCharset := regexp.MustCompile(`\s+w:characterSet="[^"]*"`)
+	normalized := reCharset.ReplaceAllString(content, "")
+
+	if normalized == content {
+		return nil
+	}
+	return atomicWriteFile(ftPath, []byte(normalized), 0o644)
+}
+
+// normalizeNumberingLvlJc rewrites invalid logical alignment values in
+// numbering.xml level justification (<w:lvlJc>) to OOXML-compatible values.
+func normalizeNumberingLvlJc(tempDir string) error {
+	numberingPath := filepath.Join(tempDir, "word", "numbering.xml")
+	data, err := os.ReadFile(numberingPath)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("read numbering.xml: %w", err)
+	}
+
+	normalized := normalizeLvlJcValues(string(data))
+	if normalized == string(data) {
+		return nil
+	}
+
+	if err := atomicWriteFile(numberingPath, []byte(normalized), 0o644); err != nil {
+		return fmt.Errorf("write numbering.xml: %w", err)
+	}
+	return nil
 }
 
 // validateStructure checks that required OpenXML parts exist.

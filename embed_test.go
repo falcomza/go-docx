@@ -39,7 +39,6 @@ func minimalXLSX(t *testing.T) []byte {
 	return buf.Bytes()
 }
 
-
 func TestInsertEmbeddedObjectDefaultIcon(t *testing.T) {
 	tempDir := t.TempDir()
 	inputPath := filepath.Join(tempDir, "input.docx")
@@ -336,6 +335,49 @@ func TestInsertEmbeddedObjectAnchorRequired(t *testing.T) {
 	})
 	if err == nil {
 		t.Error("expected error when Anchor is empty for PositionAfterText")
+	}
+}
+
+func TestInsertEmbeddedObjectDrawAspectIcon(t *testing.T) {
+	tempDir := t.TempDir()
+	inputPath := filepath.Join(tempDir, "input.docx")
+	outputPath := filepath.Join(tempDir, "output.docx")
+
+	if err := os.WriteFile(inputPath, buildEmbedFixtureDocx(t), 0o644); err != nil {
+		t.Fatalf("write input: %v", err)
+	}
+
+	u, err := godocx.New(inputPath)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer u.Cleanup()
+
+	if err := u.InsertEmbeddedObject(godocx.EmbeddedObjectOptions{
+		FileBytes: minimalXLSX(t),
+		Position:  godocx.PositionEnd,
+	}); err != nil {
+		t.Fatalf("InsertEmbeddedObject: %v", err)
+	}
+
+	if err := u.Save(outputPath); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	doc := readZipEntry(t, outputPath, "word/document.xml")
+	if !strings.Contains(doc, `DrawAspect="Icon"`) {
+		t.Error("document.xml missing DrawAspect=\"Icon\" attribute - object will not display as icon")
+	}
+	// Object must be embedded (not linked): Type="Embed" and no Type="Link".
+	if !strings.Contains(doc, `Type="Embed"`) {
+		t.Error("document.xml missing Type=\"Embed\" - object is not embedded")
+	}
+	if strings.Contains(doc, `Type="Link"`) {
+		t.Error("document.xml contains Type=\"Link\" - object must not be a linked file")
+	}
+	// No hyperlink wrapper around the OLE object.
+	if strings.Contains(doc, "<w:hyperlink") {
+		t.Error("document.xml contains <w:hyperlink> around embedded object - icon must be inserted without a link")
 	}
 }
 

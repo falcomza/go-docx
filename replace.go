@@ -137,12 +137,140 @@ func (u *Updater) ReplaceTextRegex(pattern *regexp.Regexp, replacement string, o
 	return count, nil
 }
 
-// replaceInFile replaces text in a single XML file
+// normalizeRunsInXML merges consecutive <w:r> elements that share the same
+// <w:rPr> (run properties) within each paragraph. This pre-processing pass
+// ensures template placeholders like {{FIELD}} that Word fragmented across
+// multiple text runs are reconstituted into a single run before substitution.
+// The operation is idempotent and preserves all paragraph/character formatting.
+func normalizeRunsInXML(raw []byte) []byte {
+	return extractParaPattern.ReplaceAllFunc(raw, mergeCompatibleRuns)
+}
+
+// mergeCompatibleRuns consolidates consecutive <w:r> elements with identical
+// run properties within a single paragraph. Returns the paragraph unchanged if
+// no merging opportunities are found.
+func mergeCompatibleRuns(para []byte) []byte {
+	s := string(para)
+
+	type runSpan struct {
+		start, end   int
+		rpr          string // empty string if the run has no <w:rPr>
+		text         string // decoded text from all <w:t> elements in the run
+		needPreserve bool   // whether xml:space="preserve" is required
+	}
+
+	// Locate every <w:r> element and record its position and content.
+	rawLocs := runBlockPattern.FindAllStringIndex(s, -1)
+	if len(rawLocs) <= 1 {
+		return para // nothing to merge
+	}
+
+	spans := make([]runSpan, 0, len(rawLocs))
+	for _, loc := range rawLocs {
+		runStr := s[loc[0]:loc[1]]
+		rpr := runRprPattern.FindString(runStr)
+
+		// Collect and decode text from any <w:t> elements inside this run.
+		var sb strings.Builder
+		needPreserve := false
+		for _, tm := range extractTextPattern.FindAllStringSubmatch(runStr, -1) {
+			sb.WriteString(xmlUnescape(tm[1]))
+			if strings.Contains(tm[0], `xml:space="preserve"`) {
+				needPreserve = true
+			}
+		}
+		text := sb.String()
+		if !needPreserve && (strings.HasPrefix(text, " ") || strings.HasSuffix(text, " ")) {
+			needPreserve = true
+		}
+
+		spans = append(spans, runSpan{
+			start:        loc[0],
+			end:          loc[1],
+			rpr:          rpr,
+			text:         text,
+			needPreserve: needPreserve,
+		})
+	}
+
+	// Group consecutive spans that share identical rPr.
+	type mergedSpan struct {
+		start, end   int
+		rpr          string
+		text         string
+		needPreserve bool
+	}
+
+	merged := make([]mergedSpan, 0, len(spans))
+	cur := mergedSpan{
+		start:        spans[0].start,
+		end:          spans[0].end,
+		rpr:          spans[0].rpr,
+		text:         spans[0].text,
+		needPreserve: spans[0].needPreserve,
+	}
+	for i := 1; i < len(spans); i++ {
+		if spans[i].rpr == cur.rpr {
+			// Same run properties — extend the current merged group.
+			cur.end = spans[i].end
+			cur.text += spans[i].text
+			if spans[i].needPreserve {
+				cur.needPreserve = true
+			}
+		} else {
+			merged = append(merged, cur)
+			cur = mergedSpan{
+				start:        spans[i].start,
+				end:          spans[i].end,
+				rpr:          spans[i].rpr,
+				text:         spans[i].text,
+				needPreserve: spans[i].needPreserve,
+			}
+		}
+	}
+	merged = append(merged, cur)
+
+	// No merging took place — return original bytes.
+	if len(merged) == len(spans) {
+		return para
+	}
+
+	// Rebuild the paragraph, replacing each merged multi-run span with a
+	// single canonical <w:r> that carries the combined text.
+	var out strings.Builder
+	out.Grow(len(s))
+	pos := 0
+	for _, m := range merged {
+		out.WriteString(s[pos:m.start])
+		out.WriteString("<w:r>")
+		if m.rpr != "" {
+			out.WriteString(m.rpr)
+		}
+		if m.needPreserve {
+			out.WriteString(`<w:t xml:space="preserve">`)
+		} else {
+			out.WriteString("<w:t>")
+		}
+		out.WriteString(xmlEscape(m.text))
+		out.WriteString("</w:t></w:r>")
+		pos = m.end
+	}
+	out.WriteString(s[pos:])
+
+	return []byte(out.String())
+}
+
+// replaceInFile replaces text in a single XML file.
+// It normalizes split runs first so that placeholders fragmented across
+// multiple <w:r> elements (common in template headers/footers) are found.
 func (u *Updater) replaceInFile(path, old, new string, opts ReplaceOptions, count *int) (int, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return 0, err
 	}
+
+	// Merge consecutive compatible runs so split placeholders are visible.
+	raw = normalizeRunsInXML(raw)
 
 	updated, replaced := u.replaceTextInXML(raw, old, new, opts, count)
 	if replaced > 0 {
@@ -154,12 +282,17 @@ func (u *Updater) replaceInFile(path, old, new string, opts ReplaceOptions, coun
 	return replaced, nil
 }
 
-// replaceRegexInFile replaces text matching regex in a single XML file
+// replaceRegexInFile replaces text matching regex in a single XML file.
+// It normalizes split runs first so that patterns spanning multiple <w:r>
+// elements (common in template headers/footers) are matched correctly.
 func (u *Updater) replaceRegexInFile(path string, pattern *regexp.Regexp, replacement string, opts ReplaceOptions, count *int) (int, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return 0, err
 	}
+
+	// Merge consecutive compatible runs so split patterns are visible.
+	raw = normalizeRunsInXML(raw)
 
 	updated, replaced := u.replaceRegexInXML(raw, pattern, replacement, opts, count)
 	if replaced > 0 {

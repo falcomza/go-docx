@@ -106,8 +106,11 @@ func (u *Updater) InsertEmbeddedObject(opts EmbeddedObjectOptions) error {
 
 // generateOLEObjectXML returns the <w:p> paragraph XML for an OLE embedded object.
 // widthPt and heightPt are in typographic points; w:dxaOrig/w:dyaOrig are in twips
-// (1 point = 20 twips). Namespace prefixes are declared on each top-level element
-// rather than hoisted to <w:document> for standalone-fragment compatibility with Word.
+// (1 point = 20 twips). The DrawAspect="Icon" attribute ensures the object displays
+// as a clickable icon rather than attempt to render the embedded content, matching
+// MS Word's behavior for embedded file objects. Namespace prefixes are declared on
+// each top-level element rather than hoisted to <w:document> for standalone-fragment
+// compatibility with Word.
 func generateOLEObjectXML(shapeID, imageRelID, xlsxRelID, progID, objectID string, widthPt, heightPt int) []byte {
 	const tmpl = `<w:p><w:r><w:object w:dxaOrig="%d" w:dyaOrig="%d">` +
 		`<v:shape id="%s" type="#_x0000_t75"` +
@@ -118,7 +121,7 @@ func generateOLEObjectXML(shapeID, imageRelID, xlsxRelID, progID, objectID strin
 		` xmlns:r="` + OfficeDocumentNS + `"/>` +
 		`</v:shape>` +
 		`<o:OLEObject Type="Embed" ProgID="%s" ShapeID="%s"` +
-		` DrawAspect="Content" ObjectID="%s"` +
+		` DrawAspect="Icon" ObjectID="%s"` +
 		` r:id="%s"` +
 		` xmlns:o="` + OfficeNamespace + `"` +
 		` xmlns:r="` + OfficeDocumentNS + `"/>` +

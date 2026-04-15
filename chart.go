@@ -127,6 +127,9 @@ func (u *Updater) InsertChart(opts ChartOptions) error {
 	if err := u.addContentTypeOverride(chartIndex); err != nil {
 		return fmt.Errorf("add content type: %w", err)
 	}
+	if err := u.addImageContentType(".xlsx", XLSXContentType); err != nil {
+		return fmt.Errorf("add workbook content type: %w", err)
+	}
 
 	return nil
 }
@@ -739,6 +742,10 @@ func generateSheetXML(opts ChartOptions) []byte {
 
 	// Determine if we need X values column (for scatter charts with XValues)
 	hasXValues := opts.ChartKind == ChartKindScatter && len(opts.Series) > 0 && len(opts.Series[0].XValues) > 0
+	seriesColOffset := 2 // Column B by default
+	if hasXValues {
+		seriesColOffset = 3 // Column C when column B is reserved for X values
+	}
 
 	// Header row with series names
 	buf.WriteString(`<row r="1">`)
@@ -747,7 +754,7 @@ func generateSheetXML(opts ChartOptions) []byte {
 		buf.WriteString(`<c r="B1" t="str"><v>X Values</v></c>`) // X values header
 	}
 	for i, series := range opts.Series {
-		col := columnLetter(i + 3) // Start from column C if XValues exist, otherwise B
+		col := columnLetter(i + seriesColOffset)
 		buf.WriteString(fmt.Sprintf(`<c r="%s1" t="str"><v>%s</v></c>`, col, xmlEscape(series.Name)))
 	}
 	buf.WriteString(`</row>`)
@@ -767,7 +774,7 @@ func generateSheetXML(opts ChartOptions) []byte {
 
 		// Values for each series
 		for j := range opts.Series {
-			col := columnLetter(j + 3)
+			col := columnLetter(j + seriesColOffset)
 			if i < len(opts.Series[j].Values) {
 				buf.WriteString(fmt.Sprintf(`<c r="%s%d"><v>%g</v></c>`, col, rowNum, opts.Series[j].Values[i]))
 			}
@@ -1010,6 +1017,15 @@ func generateSeriesXML(index int, series SeriesOptions, opts ChartOptions) strin
 		buf.WriteString(`<c:invertIfNegative val="1"/>`)
 	}
 
+	// Line chart marker must be emitted before cat/val in c:ser child order.
+	if opts.ChartKind == ChartKindLine {
+		if series.ShowMarkers {
+			buf.WriteString(`<c:marker><c:symbol val="circle"/></c:marker>`)
+		} else {
+			buf.WriteString(`<c:marker><c:symbol val="none"/></c:marker>`)
+		}
+	}
+
 	// Categories
 	buf.WriteString(fmt.Sprintf(`<c:cat><c:strRef><c:f>Sheet1!$A$2:$A$%d</c:f>`, len(opts.Categories)+1))
 	buf.WriteString(fmt.Sprintf(`<c:strCache><c:ptCount val="%d"/>`, len(opts.Categories)))
@@ -1032,11 +1048,6 @@ func generateSeriesXML(index int, series SeriesOptions, opts ChartOptions) strin
 	if opts.ChartKind == ChartKindLine {
 		if series.Smooth {
 			buf.WriteString(`<c:smooth val="1"/>`)
-		}
-		if series.ShowMarkers {
-			buf.WriteString(`<c:marker><c:symbol val="circle"/></c:marker>`)
-		} else {
-			buf.WriteString(`<c:marker><c:symbol val="none"/></c:marker>`)
 		}
 	}
 

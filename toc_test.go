@@ -82,6 +82,35 @@ func TestGenerateTOCXML_CustomOutlineLevels(t *testing.T) {
 	}
 }
 
+func TestGenerateCaptionListXML_TableOfFigures(t *testing.T) {
+	opts := DefaultTableOfFiguresOptions()
+	result := generateCaptionListXML(opts, CaptionFigure)
+	xml := string(result)
+
+	if !strings.Contains(xml, "Table of Figures") {
+		t.Error("expected title paragraph for table of figures")
+	}
+	if !strings.Contains(xml, `TOC \h \z \c &quot;Figure&quot;`) && !strings.Contains(xml, `TOC \h \z \c "Figure"`) {
+		t.Error("expected TOC field instruction with figure caption switch")
+	}
+	if !strings.Contains(xml, `fldCharType="begin"`) || !strings.Contains(xml, `fldCharType="end"`) {
+		t.Error("expected field begin/end in caption list XML")
+	}
+}
+
+func TestGenerateCaptionListXML_TableOfTables(t *testing.T) {
+	opts := DefaultTableOfTablesOptions()
+	result := generateCaptionListXML(opts, CaptionTable)
+	xml := string(result)
+
+	if !strings.Contains(xml, "Table of Tables") {
+		t.Error("expected title paragraph for table of tables")
+	}
+	if !strings.Contains(xml, `TOC \h \z \c &quot;Table&quot;`) && !strings.Contains(xml, `TOC \h \z \c "Table"`) {
+		t.Error("expected TOC field instruction with table caption switch")
+	}
+}
+
 func TestMarkTOCForUpdate(t *testing.T) {
 	// Create a document XML with a TOC field
 	docXML := []byte(`<w:body><w:p><w:r><w:fldChar w:fldCharType="begin"/></w:r>` +

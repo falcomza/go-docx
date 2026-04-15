@@ -2,6 +2,8 @@ package godocx_test
 
 import (
 	"archive/zip"
+	"encoding/xml"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -195,6 +197,8 @@ func TestInsertMultipleCharts(t *testing.T) {
 	if !strings.Contains(chart2XML, "Chart 2") {
 		t.Error("Chart 2 not found")
 	}
+
+	assertEmbeddedWorkbookContentTypes(t, outputPath)
 }
 
 func TestInsertChartInvalidData(t *testing.T) {
@@ -378,6 +382,131 @@ func TestInsertChartAtBeginning(t *testing.T) {
 	}
 }
 
+func TestInsertLineChartMarkerOrderForOOXMLValidation(t *testing.T) {
+	tempDir := t.TempDir()
+	inputPath := filepath.Join(tempDir, "input.docx")
+	outputPath := filepath.Join(tempDir, "output.docx")
+
+	if err := os.WriteFile(inputPath, buildFixtureDocx(t), 0o644); err != nil {
+		t.Fatalf("write input fixture: %v", err)
+	}
+
+	u, err := godocx.New(inputPath)
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+	defer u.Cleanup()
+
+	err = u.InsertChart(godocx.ChartOptions{
+		Position:   godocx.PositionEnd,
+		Title:      "Line Chart Validation",
+		ChartKind:  godocx.ChartKindLine,
+		Categories: []string{"Jan", "Feb", "Mar"},
+		Series: []godocx.SeriesOptions{
+			{Name: "Series 1", Values: []float64{10, 20, 30}, ShowMarkers: true},
+		},
+		ShowLegend: true,
+	})
+	if err != nil {
+		t.Fatalf("InsertChart failed: %v", err)
+	}
+
+	if err := u.Save(outputPath); err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+
+	chartXML, _ := findChartXMLContaining(t, outputPath, "Line Chart Validation")
+
+	serStart := strings.Index(chartXML, "<c:ser>")
+	if serStart == -1 {
+		t.Fatal("series element not found")
+	}
+	serEnd := strings.Index(chartXML[serStart:], "</c:ser>")
+	if serEnd == -1 {
+		t.Fatal("series closing tag not found")
+	}
+	serXML := chartXML[serStart : serStart+serEnd]
+
+	markerPos := strings.Index(serXML, "<c:marker>")
+	catPos := strings.Index(serXML, "<c:cat>")
+	valPos := strings.Index(serXML, "<c:val>")
+
+	if markerPos == -1 || catPos == -1 || valPos == -1 {
+		t.Fatalf("expected marker/cat/val in line series, got: %s", serXML)
+	}
+	if markerPos > catPos || markerPos > valPos {
+		t.Fatalf("invalid line series order: marker must appear before cat/val; series XML: %s", serXML)
+	}
+}
+
+func TestInsertChartWorkbookColumnsAlignWithSeriesFormulas(t *testing.T) {
+	tempDir := t.TempDir()
+	inputPath := filepath.Join(tempDir, "input.docx")
+	outputPath := filepath.Join(tempDir, "output.docx")
+
+	if err := os.WriteFile(inputPath, buildFixtureDocx(t), 0o644); err != nil {
+		t.Fatalf("write input fixture: %v", err)
+	}
+
+	u, err := godocx.New(inputPath)
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+	defer u.Cleanup()
+
+	err = u.InsertChart(godocx.ChartOptions{
+		Position:   godocx.PositionEnd,
+		Title:      "Workbook Alignment",
+		ChartKind:  godocx.ChartKindColumn,
+		Categories: []string{"Q1", "Q2"},
+		Series: []godocx.SeriesOptions{
+			{Name: "Revenue", Values: []float64{100, 200}},
+			{Name: "Cost", Values: []float64{80, 90}},
+		},
+		ShowLegend: true,
+	})
+	if err != nil {
+		t.Fatalf("InsertChart failed: %v", err)
+	}
+
+	if err := u.Save(outputPath); err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+
+	chartXML, _ := findChartXMLContaining(t, outputPath, "Workbook Alignment")
+	if !strings.Contains(chartXML, `Sheet1!$B$2:$B$3`) {
+		t.Fatalf("expected first series formula to point to column B, got chart: %s", chartXML)
+	}
+	if !strings.Contains(chartXML, `Sheet1!$C$2:$C$3`) {
+		t.Fatalf("expected second series formula to point to column C, got chart: %s", chartXML)
+	}
+
+	entries := listZipEntries(t, outputPath)
+	var matched bool
+	for _, entry := range entries {
+		if !strings.HasPrefix(entry, "word/embeddings/Microsoft_Excel_Worksheet") || !strings.HasSuffix(entry, ".xlsx") {
+			continue
+		}
+
+		xlsxRaw := readZipEntryBytes(t, outputPath, entry)
+		sheetXML := readWorkbookEntry(t, xlsxRaw, "xl/worksheets/sheet1.xml")
+		if strings.Contains(sheetXML, `>Revenue<`) && strings.Contains(sheetXML, `>Cost<`) {
+			matched = true
+			if !strings.Contains(sheetXML, `r="B1"`) {
+				t.Fatalf("expected Revenue workbook header in column B, got sheet: %s", sheetXML)
+			}
+			if !strings.Contains(sheetXML, `r="C1"`) {
+				t.Fatalf("expected Cost workbook header in column C, got sheet: %s", sheetXML)
+			}
+			break
+		}
+	}
+
+	if !matched {
+		t.Fatal("could not find inserted chart workbook containing Revenue/Cost series")
+	}
+}
+
 func findChartXMLContaining(t *testing.T, docxPath string, needle string) (string, string) {
 	t.Helper()
 
@@ -415,4 +544,81 @@ func listZipEntries(t *testing.T, zipPath string) []string {
 		entries = append(entries, f.Name)
 	}
 	return entries
+}
+
+type contentTypes struct {
+	XMLName   xml.Name              `xml:"Types"`
+	Defaults  []contentTypeDefault  `xml:"Default"`
+	Overrides []contentTypeOverride `xml:"Override"`
+}
+
+type contentTypeDefault struct {
+	Extension string `xml:"Extension,attr"`
+}
+
+type contentTypeOverride struct {
+	PartName string `xml:"PartName,attr"`
+}
+
+func assertEmbeddedWorkbookContentTypes(t *testing.T, zipPath string) {
+	t.Helper()
+
+	reader, err := zip.OpenReader(zipPath)
+	if err != nil {
+		t.Fatalf("open zip: %v", err)
+	}
+	defer reader.Close()
+
+	var contentTypesXML []byte
+	for _, file := range reader.File {
+		if file.Name != "[Content_Types].xml" {
+			continue
+		}
+
+		rc, openErr := file.Open()
+		if openErr != nil {
+			t.Fatalf("open [Content_Types].xml: %v", openErr)
+		}
+		contentTypesXML, err = io.ReadAll(rc)
+		rc.Close()
+		if err != nil {
+			t.Fatalf("read [Content_Types].xml: %v", err)
+		}
+		break
+	}
+
+	if len(contentTypesXML) == 0 {
+		t.Fatal("[Content_Types].xml not found")
+	}
+
+	var parsed contentTypes
+	if err := xml.Unmarshal(contentTypesXML, &parsed); err != nil {
+		t.Fatalf("unmarshal [Content_Types].xml: %v", err)
+	}
+
+	defaults := make(map[string]bool, len(parsed.Defaults))
+	for _, def := range parsed.Defaults {
+		defaults[strings.ToLower(def.Extension)] = true
+	}
+
+	overrides := make(map[string]bool, len(parsed.Overrides))
+	for _, override := range parsed.Overrides {
+		overrides[strings.TrimPrefix(override.PartName, "/")] = true
+	}
+
+	for _, file := range reader.File {
+		if !strings.HasPrefix(file.Name, "word/embeddings/") || strings.ToLower(filepath.Ext(file.Name)) != ".xlsx" {
+			continue
+		}
+		if overrides[file.Name] {
+			continue
+		}
+
+		ext := strings.TrimPrefix(strings.ToLower(filepath.Ext(file.Name)), ".")
+		if ext != "" && defaults[ext] {
+			continue
+		}
+
+		t.Fatalf("missing content type declaration for %s", file.Name)
+	}
 }

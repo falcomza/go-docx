@@ -179,6 +179,14 @@ func (u *Updater) InsertTable(opts TableOptions) error {
 	// Set defaults
 	opts = applyTableDefaults(opts)
 
+	// Ensure referenced paragraph styles exist in styles.xml so that
+	// Word and LibreOffice can resolve them. If a <w:pStyle> references an
+	// ID absent from styles.xml, LibreOffice collapses the table to plain
+	// text because it loses the cell-paragraph context.
+	if err := u.ensureTableCellStyles(opts.HeaderStyleName, opts.RowStyleName); err != nil {
+		return fmt.Errorf("ensure table cell styles: %w", err)
+	}
+
 	// Read document.xml
 	docPath := filepath.Join(u.tempDir, "word", "document.xml")
 	raw, err := os.ReadFile(docPath)
@@ -201,6 +209,80 @@ func (u *Updater) InsertTable(opts TableOptions) error {
 	}
 
 	return nil
+}
+
+// ensureTableCellStyles guarantees that every non-empty paragraph style name
+// referenced by header/row cells is defined in word/styles.xml. When a
+// <w:pStyle> references an ID that is absent from styles.xml, both Word and
+// LibreOffice fall back to broken rendering that collapses the table to plain
+// text. This method injects a minimal paragraph-style definition for each
+// missing ID so the document is self-consistent.
+func (u *Updater) ensureTableCellStyles(styleNames ...string) error {
+	stylesPath := filepath.Join(u.tempDir, "word", "styles.xml")
+
+	raw, err := os.ReadFile(stylesPath)
+	if err != nil {
+		// styles.xml doesn't exist yet; start with an empty document.
+		raw = []byte(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` + "\n" +
+			`<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">` +
+			`</w:styles>`)
+	}
+
+	changed := false
+	for _, name := range styleNames {
+		if name == "" {
+			continue
+		}
+		// Check whether a style with this styleId is already present.
+		// We look for the attribute value in both single- and double-quote form.
+		idAttrDouble := fmt.Sprintf(`w:styleId="%s"`, name)
+		idAttrSingle := fmt.Sprintf(`w:styleId='%s'`, name)
+		if bytes.Contains(raw, []byte(idAttrDouble)) || bytes.Contains(raw, []byte(idAttrSingle)) {
+			continue // already defined
+		}
+
+		// Build a minimal paragraph style. "Table Header" gets bold so it
+		// visually distinguishes header cells; "Table" (data rows) is plain.
+		boldXML := ""
+		if strings.Contains(strings.ToLower(name), "header") {
+			boldXML = `<w:rPr><w:b/></w:rPr>`
+		}
+		styleXML := fmt.Sprintf(
+			`<w:style w:type="paragraph" w:styleId="%s">`+
+				`<w:name w:val="%s"/>`+
+				`<w:basedOn w:val="Normal"/>`+
+				`<w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr>`+
+				`%s`+
+				`</w:style>`,
+			xmlEscape(name), xmlEscape(name), boldXML,
+		)
+
+		// Inject before </w:styles>.
+		closer := []byte("</w:styles>")
+		pos := bytes.LastIndex(raw, closer)
+		if pos == -1 {
+			return fmt.Errorf("invalid styles.xml: missing </w:styles>")
+		}
+		newRaw := make([]byte, 0, len(raw)+len(styleXML)+1)
+		newRaw = append(newRaw, raw[:pos]...)
+		newRaw = append(newRaw, []byte(styleXML)...)
+		newRaw = append(newRaw, '\n')
+		newRaw = append(newRaw, raw[pos:]...)
+		raw = newRaw
+		changed = true
+	}
+
+	if !changed {
+		return nil
+	}
+
+	if err := atomicWriteFile(stylesPath, raw, 0o644); err != nil {
+		return fmt.Errorf("write styles.xml: %w", err)
+	}
+
+	// Ensure the relationship and content-type entries exist so Word/LibreOffice
+	// can locate the styles part we just wrote.
+	return u.ensureStylesRelationship()
 }
 
 // validateTableOptions validates table creation options
@@ -268,12 +350,21 @@ func applyTableDefaults(opts TableOptions) TableOptions {
 	if opts.RowHeightRule == "" {
 		opts.RowHeightRule = RowHeightAuto
 	}
-	// NOTE: RowStyleName must be a paragraph style (e.g. "Normal"), NOT a table
-	// style (e.g. "MediumShading1-Accent1"). Copying TableStyle into RowStyleName
-	// injects an undefined paragraph style into every data cell's <w:pStyle>,
-	// causing Word/LibreOffice to fail style resolution and render cell content
-	// as if it were outside the table. Leave RowStyleName empty when unset so
-	// cells use the document default paragraph style ("Normal").
+	// Named paragraph styles for table cells. "Table Header" and "Table" are
+	// built-in Word paragraph styles present in all standard document templates.
+	// Callers may override with any valid paragraph style name, or the empty
+	// string to fall back to the document default ("Normal").
+	// NOTE: These must be paragraph styles, NOT table styles like "TableGrid".
+	// Injecting a table style name as a paragraph style causes Word/LibreOffice
+	// to fail style resolution and render cell content as if outside the table.
+	if opts.HeaderStyleName == "" {
+		opts.HeaderStyleName = "Table Header"
+	}
+	if opts.RowStyleName == "" {
+		opts.RowStyleName = "Table"
+	}
+	// Always repeat the header row at the top of each page.
+	opts.RepeatHeader = true
 
 	return opts
 }
@@ -298,17 +389,19 @@ func generateTableXML(opts TableOptions) []byte {
 	} else {
 		buf.WriteString(fmt.Sprintf(`<w:tblW w:w="%d" w:type="%s"/>`, opts.TableWidth, opts.TableWidthType))
 	}
+
+	// Table alignment — must follow tblW and precede tblBorders (ECMA-376 §17.4.59 CT_TblPr sequence)
+	buf.WriteString(fmt.Sprintf(`<w:jc w:val="%s"/>`, opts.TableAlignment))
+
+	// Table borders
+	buf.WriteString(generateTableBorders(opts))
+
+	// Table layout — must follow tblBorders (ECMA-376 §17.4.59 CT_TblPr sequence)
 	if opts.AutoFit {
 		buf.WriteString(`<w:tblLayout w:type="autofit"/>`)
 	} else {
 		buf.WriteString(`<w:tblLayout w:type="fixed"/>`)
 	}
-
-	// Table alignment
-	buf.WriteString(fmt.Sprintf(`<w:jc w:val="%s"/>`, opts.TableAlignment))
-
-	// Table borders
-	buf.WriteString(generateTableBorders(opts))
 
 	// Cell margins (padding)
 	buf.WriteString(fmt.Sprintf(`<w:tblCellMar>
@@ -623,13 +716,13 @@ func generateCell(content string, align CellAlignment, vAlign VerticalAlignment,
 	// Cell properties
 	buf.WriteString("<w:tcPr>")
 
-	// Vertical alignment
-	buf.WriteString(fmt.Sprintf(`<w:vAlign w:val="%s"/>`, vAlign))
-
-	// Background color
+	// Background color — must precede vAlign in CT_TcPr sequence (ECMA-376 §17.4.62: shd before vAlign)
 	if background != "" {
 		buf.WriteString(fmt.Sprintf(`<w:shd w:val="clear" w:color="auto" w:fill="%s"/>`, background))
 	}
+
+	// Vertical alignment
+	buf.WriteString(fmt.Sprintf(`<w:vAlign w:val="%s"/>`, vAlign))
 
 	buf.WriteString("</w:tcPr>")
 

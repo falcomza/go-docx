@@ -186,6 +186,99 @@ func buildFixtureNS0Docx(t *testing.T) []byte {
 	return buf.Bytes()
 }
 
+// buildFixtureDocxWithInvalidLvlJc returns a minimal DOCX that contains
+// LibreOffice-style invalid numbering justification values (start/end).
+func buildFixtureDocxWithInvalidLvlJc(t *testing.T) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+
+	addZipEntry(t, zw, "[Content_Types].xml",
+		`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`+
+			`<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">`+
+			`<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>`+
+			`<Default Extension="xml" ContentType="application/xml"/>`+
+			`<Override PartName="/word/document.xml" ContentType="`+DocxMainContentType+`"/>`+
+			`<Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/>`+
+			`</Types>`)
+
+	addZipEntry(t, zw, "_rels/.rels",
+		`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`+
+			`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">`+
+			`<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>`+
+			`</Relationships>`)
+
+	addZipEntry(t, zw, "word/document.xml",
+		`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`+
+			`<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">`+
+			`<w:body><w:p><w:r><w:t>Hello</w:t></w:r></w:p></w:body>`+
+			`</w:document>`)
+
+	addZipEntry(t, zw, "word/_rels/document.xml.rels",
+		`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`+
+			`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">`+
+			`<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/>`+
+			`</Relationships>`)
+
+	addZipEntry(t, zw, "word/numbering.xml",
+		`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`+
+			`<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">`+
+			`<w:abstractNum w:abstractNumId="0">`+
+			`<w:lvl w:ilvl="0">`+
+			`<w:start w:val="1"/>`+
+			`<w:numFmt w:val="decimal"/>`+
+			`<w:lvlText w:val="%1."/>`+
+			`<w:lvlJc w:val="start" />`+
+			`</w:lvl>`+
+			`<w:lvl w:ilvl="1">`+
+			`<w:start w:val="1"/>`+
+			`<w:numFmt w:val="decimal"/>`+
+			`<w:lvlText w:val="%2."/>`+
+			`<w:lvlJc w:val="end"/>`+
+			`</w:lvl>`+
+			`</w:abstractNum>`+
+			`</w:numbering>`)
+
+	if err := zw.Close(); err != nil {
+		t.Fatalf("close zip: %v", err)
+	}
+	return buf.Bytes()
+}
+
+func TestNew_NormalizesInvalidNumberingLvlJcWithoutListOps(t *testing.T) {
+	tmp := t.TempDir()
+	inputPath := tmp + "/invalid-lvljc.docx"
+	outputPath := tmp + "/normalized.docx"
+
+	if err := os.WriteFile(inputPath, buildFixtureDocxWithInvalidLvlJc(t), 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+
+	u, err := New(inputPath)
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+	defer u.Cleanup()
+
+	if err := u.Save(outputPath); err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+
+	numberingXML := readZipEntry(t, outputPath, "word/numbering.xml")
+	if strings.Contains(numberingXML, `w:lvlJc w:val="start"`) {
+		t.Fatal("numbering.xml still contains invalid start value for w:lvlJc")
+	}
+	if strings.Contains(numberingXML, `w:lvlJc w:val="end"`) {
+		t.Fatal("numbering.xml still contains invalid end value for w:lvlJc")
+	}
+	if !strings.Contains(numberingXML, `w:lvlJc w:val="left"`) {
+		t.Fatal("normalized left value for w:lvlJc not found")
+	}
+	if !strings.Contains(numberingXML, `w:lvlJc w:val="right"`) {
+		t.Fatal("normalized right value for w:lvlJc not found")
+	}
+}
+
 // TestNew_NS0NamespacePrefixNormalised verifies that a DOCX produced by
 // python-docx/lxml — which binds the WML namespace to "ns0:" instead of
 // the canonical "w:" — can have content appended with AddHeading,

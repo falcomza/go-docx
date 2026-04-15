@@ -20,10 +20,11 @@ A powerful Go library for programmatically manipulating Microsoft Word (DOCX) do
 - **Chart Insertion**: Create bar, column, line, pie, area, and scatter charts from scratch
 - **Scatter Charts**: Full XValues support for true scatter/XY data
 - **Multi-Chart Workflows**: Insert multiple charts programmatically
-- **Read Chart Data**: Extract existing chart categories and series
+- **Read Chart Data**: Extract existing chart titles, categories, and series
 
 📝 **Document Structure**
 - **Table of Contents**: Generate automatic TOC using Word field codes, with update-on-open support
+- **Table of Figures / Tables**: Generate caption-based lists for figure and table captions using Word field codes
 - **Page & Section Breaks**: Control document flow with page and section breaks
 - **Page Layout**: Configure page sizes, orientation, and margins per section
 - **Headers & Footers**: Professional headers and footers with page numbering
@@ -285,6 +286,22 @@ for _, entry := range entries {
 }
 
 u.Save("with_toc.docx")
+```
+
+### Table of Figures and Table of Tables
+
+Generate caption-based lists for existing `Figure` and `Table` captions:
+
+```go
+u, _ := godocx.New("document.docx")
+defer u.Cleanup()
+
+u.InsertTableOfFigures(godocx.DefaultTableOfFiguresOptions())
+u.InsertTableOfTables(godocx.DefaultTableOfTablesOptions())
+
+// Word populates the lists when fields are updated on open
+u.UpdateTOC()
+u.Save("with_caption_lists.docx")
 ```
 
 ### Custom Styles
@@ -806,12 +823,14 @@ u.Save("with_lists.docx")
 | `InsertChart(opts ChartOptions)` | Create new chart |
 | `UpdateChart(index, data)` | Update existing chart data |
 | `GetChartCount()` | Count charts in document |
-| `GetChartData(chartIndex)` | Read chart categories and series |
+| `GetChartData(chartIndex)` | Read chart title, categories, and series |
 
 ### Table of Contents
 | Method | Description |
 |--------|-------------|
 | `InsertTOC(opts TOCOptions)` | Insert TOC field |
+| `InsertTableOfFigures(opts CaptionListOptions)` | Insert caption-based list for figure captions |
+| `InsertTableOfTables(opts CaptionListOptions)` | Insert caption-based list for table captions |
 | `UpdateTOC()` | Mark TOC for recalculation on open |
 | `GetTOCEntries()` | Parse existing TOC entries |
 
@@ -1031,6 +1050,23 @@ DOCX files are ZIP archives containing XML files. This library:
 - All in-place XML writes use an atomic write-then-rename strategy so a crash mid-write never leaves a corrupt file visible to readers
 - The ZIP extractor enforces a 256 MiB per-file cap to guard against zip-bomb payloads
 - XML escaping and unescaping use the stdlib `encoding/xml` codec throughout (no `html` package dependency)
+
+### Concurrency Model
+
+- `Updater` instances are isolated by temp directory, so using one `Updater` per goroutine/request is safe.
+- A single `Updater` instance is **not** goroutine-safe; do not call methods on the same instance concurrently.
+- Always call `defer u.Cleanup()` immediately after construction to avoid temp file leaks.
+
+### OOXML Compatibility Notes
+
+- `UpdateChart` requires `<c:externalData r:id="..."/>` and a valid `word/charts/_rels/chartN.xml.rels` target to an embedded workbook.
+- Chart indices and delete/update indices are 1-based.
+- Scatter chart updates expect numeric category values (used as X values).
+- Inserted chart workbooks align series headers/data columns with chart formulas (`B..` for regular charts, `C..` when scatter X values occupy column `B`).
+- Line chart series emit `c:marker` in schema-compliant `c:ser` child order for Microsoft 365 validation.
+- `GetChartData` reads chart titles from both rich text (`a:t`) and value (`c:v`) title representations.
+- Updating chart data rewrites chart series and worksheet `sheetData`; chart/workbook-level formatting in embedded workbooks is intentionally not preserved.
+- Namespace prefix changes in output XML are expected and valid as long as namespace URIs remain correct.
 
 ## Roadmap
 
