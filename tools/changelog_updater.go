@@ -11,7 +11,7 @@
 //     - today's date (DD.MM.YYYY)
 //     - same Author as the last non-empty row
 //     - Description "Release for YYYY"
-//  3. Sets (or creates) the custom property "Version" to the version value
+//  3. Sets (or creates) the custom property "Revision" to the version value
 //     written in the Change log row.
 //
 // -dir and -out default to the directory where the executable is located
@@ -19,11 +19,11 @@
 //
 // Build a standalone Windows executable:
 //
-//	go build -o changelog_updater.exe tools/changelog_updater.go
+//	go build -trimpath -ldflags="-s -w" -o changelog_updater.exe tools/changelog_updater.go
 //
 // Or cross-compile from any OS:
 //
-//	GOOS=windows GOARCH=amd64 go build -o changelog_updater.exe tools/changelog_updater.go
+//	GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o changelog_updater.exe tools/changelog_updater.go
 //
 // Usage:
 //
@@ -67,13 +67,13 @@ For every .docx file in -dir:
        Date         today in DD.MM.YYYY
        Author       copied from the last non-empty row
        Description  "Release for YYYY"
-  3. Sets the custom property "Version" (creates it if absent) to the version
+  3. Sets the custom property "Revision" (creates it if absent) to the version
      value used in the Change log row.
 
 -dir and -out default to the folder containing the executable when omitted.
 
 Build a Windows executable:
-  go build -o changelog_updater.exe tools/changelog_updater.go
+  go build -trimpath -ldflags="-s -w" -o changelog_updater.exe tools/changelog_updater.go
 
 Usage:
   changelog_updater.exe -dir <folder> [-out <folder>]
@@ -169,10 +169,10 @@ func processFile(inputPath, outPath, today, year string) error {
 		}
 	}
 
-	// 3. Set (or create) the custom property "Version".
+	// 3. Set (or create) the custom property "Revision".
 	if version != "" {
-		if err := setCustomVersion(u, version); err != nil {
-			return fmt.Errorf("set custom version: %w", err)
+		if err := setCustomRevision(u, version); err != nil {
+			return fmt.Errorf("set custom revision: %w", err)
 		}
 	}
 
@@ -274,8 +274,8 @@ func isEmptyRow(row []string) bool {
 	return true
 }
 
-// setCustomVersion upserts the "Version" custom property.
-func setCustomVersion(u *godocx.Updater, version string) error {
+// setCustomRevision upserts the "Revision" custom property.
+func setCustomRevision(u *godocx.Updater, version string) error {
 	existing, err := u.GetCustomProperties()
 	if err != nil {
 		return err
@@ -284,7 +284,7 @@ func setCustomVersion(u *godocx.Updater, version string) error {
 	updated := make([]godocx.CustomProperty, 0, len(existing)+1)
 	found := false
 	for _, p := range existing {
-		if strings.EqualFold(p.Name, "Version") {
+		if strings.EqualFold(p.Name, "Revision") {
 			p.Value = version
 			p.Type = "lpwstr"
 			found = true
@@ -292,7 +292,7 @@ func setCustomVersion(u *godocx.Updater, version string) error {
 		updated = append(updated, p)
 	}
 	if !found {
-		updated = append(updated, godocx.CustomProperty{Name: "Version", Value: version, Type: "lpwstr"})
+		updated = append(updated, godocx.CustomProperty{Name: "Revision", Value: version, Type: "lpwstr"})
 	}
 	return u.SetCustomProperties(updated)
 }
