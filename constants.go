@@ -78,6 +78,15 @@ var (
 
 	// extractCellPattern matches full <w:tc> table-cell elements.
 	extractCellPattern = regexp.MustCompile(`(?s)<w:tc>.*?</w:tc>`)
+
+	// runBlockPattern matches a complete <w:r> run element (with optional attributes).
+	// w:r elements are leaf nodes inside a paragraph — they never nest — so regex
+	// is safe. Used for run-normalization before placeholder substitution.
+	runBlockPattern = regexp.MustCompile(`(?s)<w:r(?:\s[^>]*)?>.*?</w:r>`)
+
+	// runRprPattern extracts the <w:rPr> run-properties block from within a run.
+	// Handles both non-empty (<w:rPr>…</w:rPr>) and self-closing (<w:rPr/>) forms.
+	runRprPattern = regexp.MustCompile(`(?s)<w:rPr(?:\s[^>]*)?(?:/>|>.*?</w:rPr>)`)
 )
 
 // OpenXML namespace URIs
@@ -117,7 +126,6 @@ const (
 // embeddingFilePattern matches numbered embedding filenames (e.g., embedding1.xlsx).
 var embeddingFilePattern = regexp.MustCompile(`^embedding(\d+)\.xlsx$`)
 
-
 // OpenXML content types
 const (
 	ChartContentType = "application/vnd.openxmlformats-officedocument.drawingml.chart+xml"
@@ -129,9 +137,9 @@ const (
 	// New() automatically promotes this to DocxMainContentType so templates can be
 	// used as input without any special handling by the caller.
 	DotxMainContentType = "application/vnd.openxmlformats-officedocument.wordprocessingml.template.main+xml"
-	ImageJPEGType    = "image/jpeg"
-	ImagePNGType     = "image/png"
-	ImageGIFType     = "image/gif"
-	ImageBMPType     = "image/bmp"
-	ImageTIFFType    = "image/tiff"
+	ImageJPEGType       = "image/jpeg"
+	ImagePNGType        = "image/png"
+	ImageGIFType        = "image/gif"
+	ImageBMPType        = "image/bmp"
+	ImageTIFFType       = "image/tiff"
 )

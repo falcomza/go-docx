@@ -305,10 +305,18 @@ func (u *Updater) generatePageNumberParagraph(format string) string {
 		}
 	}
 
-	// Page number field
-	buf.WriteString("<w:fldChar w:fldCharType=\"begin\"/>")
+	// Page number field.
+	// w:dirty="true" marks the field as stale so Word/LibreOffice recalculates
+	// it on open even without a document-level w:updateFields flag.
+	// The separate/placeholder/end triple is required by OOXML §17.16.18 so that
+	// renderers that don't execute field updates still display a sensible value.
+	buf.WriteString("<w:fldChar w:fldCharType=\"begin\" w:dirty=\"true\"/>")
 	buf.WriteString("</w:r><w:r>")
-	buf.WriteString("<w:instrText>PAGE</w:instrText>")
+	buf.WriteString("<w:instrText xml:space=\"preserve\"> PAGE </w:instrText>")
+	buf.WriteString("</w:r><w:r>")
+	buf.WriteString("<w:fldChar w:fldCharType=\"separate\"/>")
+	buf.WriteString("</w:r><w:r>")
+	buf.WriteString("<w:t>1</w:t>") // placeholder cached result
 	buf.WriteString("</w:r><w:r>")
 	buf.WriteString("<w:fldChar w:fldCharType=\"end\"/>")
 
@@ -317,9 +325,13 @@ func (u *Updater) generatePageNumberParagraph(format string) string {
 		buf.WriteString("</w:r><w:r>")
 		buf.WriteString("<w:t> of </w:t>")
 		buf.WriteString("</w:r><w:r>")
-		buf.WriteString("<w:fldChar w:fldCharType=\"begin\"/>")
+		buf.WriteString("<w:fldChar w:fldCharType=\"begin\" w:dirty=\"true\"/>")
 		buf.WriteString("</w:r><w:r>")
-		buf.WriteString("<w:instrText>NUMPAGES</w:instrText>")
+		buf.WriteString("<w:instrText xml:space=\"preserve\"> NUMPAGES </w:instrText>")
+		buf.WriteString("</w:r><w:r>")
+		buf.WriteString("<w:fldChar w:fldCharType=\"separate\"/>")
+		buf.WriteString("</w:r><w:r>")
+		buf.WriteString("<w:t>1</w:t>") // placeholder cached result
 		buf.WriteString("</w:r><w:r>")
 		buf.WriteString("<w:fldChar w:fldCharType=\"end\"/>")
 	}
@@ -337,7 +349,7 @@ func (u *Updater) generateDateParagraph(format string) string {
 	buf.WriteString("<w:p>")
 	buf.WriteString("<w:pPr><w:jc w:val=\"right\"/></w:pPr>")
 	buf.WriteString("<w:r>")
-	buf.WriteString("<w:fldChar w:fldCharType=\"begin\"/>")
+	buf.WriteString("<w:fldChar w:fldCharType=\"begin\" w:dirty=\"true\"/>")
 	buf.WriteString("</w:r><w:r>")
 
 	dateFormat := format
@@ -345,7 +357,11 @@ func (u *Updater) generateDateParagraph(format string) string {
 		dateFormat = "MMMM d, yyyy" // Default: January 1, 2026
 	}
 
-	buf.WriteString(fmt.Sprintf("<w:instrText>DATE \\@ \"%s\"</w:instrText>", dateFormat))
+	buf.WriteString(fmt.Sprintf("<w:instrText xml:space=\"preserve\"> DATE \\@ \"%s\" </w:instrText>", dateFormat))
+	buf.WriteString("</w:r><w:r>")
+	buf.WriteString("<w:fldChar w:fldCharType=\"separate\"/>")
+	buf.WriteString("</w:r><w:r>")
+	buf.WriteString("<w:t>1</w:t>") // placeholder cached result
 	buf.WriteString("</w:r><w:r>")
 	buf.WriteString("<w:fldChar w:fldCharType=\"end\"/>")
 	buf.WriteString("</w:r>")
