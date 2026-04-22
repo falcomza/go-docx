@@ -24,6 +24,8 @@ var (
 	abstractNumIDPattern           = regexp.MustCompile(`w:abstractNumId="(\d+)"`)
 	// abstractNumRefPattern matches the child element <w:abstractNumId w:val="N"/> inside a <w:num> block.
 	abstractNumRefPattern = regexp.MustCompile(`<w:abstractNumId[^>]+w:val="(\d+)"`)
+	lvlJcStartPattern     = regexp.MustCompile(`(<w:lvlJc\b[^>]*\bw:val=")start(")`)
+	lvlJcEndPattern       = regexp.MustCompile(`(<w:lvlJc\b[^>]*\bw:val=")end(")`)
 )
 
 // ensureNumberingXML ensures numbering.xml exists with bullet and numbered list support.
@@ -33,7 +35,14 @@ func (u *Updater) ensureNumberingXML() ([]byte, error) {
 
 	var finalContent []byte
 	if data, err := os.ReadFile(numberingPath); err == nil {
-		content := string(data)
+		// Normalize invalid w:lvlJc values emitted by LibreOffice.
+		// OOXML ST_Jc only accepts "left"/"right"; LibreOffice uses CSS logical "start"/"end".
+		content := normalizeLvlJcValues(string(data))
+		if content != string(data) {
+			if err := atomicWriteFile(numberingPath, []byte(content), 0o644); err != nil {
+				return nil, fmt.Errorf("normalize numbering.xml: %w", err)
+			}
+		}
 
 		if bulletID, numberedID, ok := extractDocxUpdateNumberingIDs(content); ok {
 			u.setListNumberingIDs(bulletID, numberedID)
@@ -96,8 +105,10 @@ func generateNumberingXML() string {
 func generateDocxUpdateNumberingDefinitions(bulletAbstractID, numberedAbstractID, bulletNumID, numberedNumID int) string {
 	var buf bytes.Buffer
 
-	bulletSymbols := []string{"●", "○", "■", "●", "○", "■", "●", "○", "■"}
-	bulletFonts := []string{"Symbol", "Courier New", "Wingdings", "", "", "", "", "", ""}
+	// Symbol/Wingdings use legacy code page mappings, not Unicode: U+F0B7/U+F0A7 are
+	// the private-use-area codepoints that map to bullet glyphs in those fonts.
+	baseSymbols := [3]string{"\uF0B7", "o", "\uF0A7"}
+	baseFonts := [3]string{"Symbol", "Courier New", "Wingdings"}
 
 	buf.WriteString("\n  <!-- Abstract Numbering Definition for Bullets -->\n")
 	fmt.Fprintf(&buf, "  <w:abstractNum w:abstractNumId=\"%d\">\n", bulletAbstractID)
@@ -107,12 +118,12 @@ func generateDocxUpdateNumberingDefinitions(bulletAbstractID, numberedAbstractID
 		fmt.Fprintf(&buf, "    <w:lvl w:ilvl=\"%d\">\n", level)
 		buf.WriteString("      <w:start w:val=\"1\"/>\n")
 		buf.WriteString("      <w:numFmt w:val=\"bullet\"/>\n")
-		fmt.Fprintf(&buf, "      <w:lvlText w:val=\"%s\"/>\n", bulletSymbols[level])
+		fmt.Fprintf(&buf, "      <w:lvlText w:val=\"%s\"/>\n", baseSymbols[level%3])
 		buf.WriteString("      <w:lvlJc w:val=\"left\"/>\n")
 		buf.WriteString("      <w:pPr>\n")
 		fmt.Fprintf(&buf, "        <w:ind w:left=\"%d\" w:hanging=\"360\"/>\n", left)
 		buf.WriteString("      </w:pPr>\n")
-		if font := bulletFonts[level]; font != "" {
+		if font := baseFonts[level%3]; font != "" {
 			buf.WriteString("      <w:rPr>\n")
 			fmt.Fprintf(&buf, "        <w:rFonts w:ascii=\"%s\" w:hAnsi=\"%s\" w:hint=\"default\"/>\n", font, font)
 			buf.WriteString("      </w:rPr>\n")
@@ -191,7 +202,14 @@ func extractDocxUpdateNumberingIDs(content string) (int, int, bool) {
 	return bulletID, numberedID, true
 }
 
-// appendToNumberingXML inserts generated XML before the closing </w:numbering> tag.
+// appendToNumberingXML inserts generated XML (which may contain both <w:abstractNum> and
+// <w:num> elements) at the correct schema-compliant position.
+//
+// OOXML CT_Numbering (ECMA-376 §17.9.17) requires all <w:abstractNum> elements to appear
+// before any <w:num> elements. To satisfy this constraint the generated block is inserted
+// before the first existing <w:num> element (falling back to before </w:numbering> when
+// there are no existing <w:num> entries).
+//
 // generateFn receives the next available abstractNumId and numId and returns the XML to insert.
 // It returns the updated content and the two IDs that were allocated (abstractID, numID).
 func appendToNumberingXML(content string, generateFn func(abstractID, numID int) string) (string, int, int, error) {
@@ -606,4 +624,14 @@ func (u *Updater) ensureHeadingOutlineNumbering() (int, error) {
 
 	u.headingNumID = numID
 	return numID, nil
+}
+
+// normalizeLvlJcValues replaces invalid w:lvlJc values emitted by LibreOffice.
+// OOXML ST_Jc only accepts "left" and "right"; LibreOffice uses CSS logical
+// keywords "start" and "end". This normalisation is applied once when numbering.xml
+// is first read so that the generated document passes Microsoft365 schema validation.
+func normalizeLvlJcValues(content string) string {
+	content = lvlJcStartPattern.ReplaceAllString(content, `${1}left${2}`)
+	content = lvlJcEndPattern.ReplaceAllString(content, `${1}right${2}`)
+	return content
 }

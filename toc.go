@@ -23,12 +23,40 @@ type TOCOptions struct {
 	Anchor string
 }
 
+// CaptionListOptions defines options for Table of Figures / Table of Tables.
+type CaptionListOptions struct {
+	// Title for the generated list (e.g. "Table of Figures"). Empty means no title paragraph.
+	Title string
+
+	// Position where to insert the field.
+	Position InsertPosition
+
+	// Anchor text for position-based insertion.
+	Anchor string
+}
+
 // DefaultTOCOptions returns default TOC options
 func DefaultTOCOptions() TOCOptions {
 	return TOCOptions{
 		Title:         "Table of Contents",
 		OutlineLevels: "1-3",
 		Position:      PositionBeginning,
+	}
+}
+
+// DefaultTableOfFiguresOptions returns default options for a Table of Figures.
+func DefaultTableOfFiguresOptions() CaptionListOptions {
+	return CaptionListOptions{
+		Title:    "Table of Figures",
+		Position: PositionBeginning,
+	}
+}
+
+// DefaultTableOfTablesOptions returns default options for a Table of Tables.
+func DefaultTableOfTablesOptions() CaptionListOptions {
+	return CaptionListOptions{
+		Title:    "Table of Tables",
+		Position: PositionBeginning,
 	}
 }
 
@@ -55,6 +83,46 @@ func (u *Updater) InsertTOC(opts TOCOptions) error {
 	updated, err := insertTOCAtPosition(raw, tocXML, opts)
 	if err != nil {
 		return fmt.Errorf("insert TOC: %w", err)
+	}
+
+	if err := os.WriteFile(docPath, updated, 0o644); err != nil {
+		return fmt.Errorf("write document.xml: %w", err)
+	}
+
+	return nil
+}
+
+// InsertTableOfFigures inserts a caption-based list field for Figure captions.
+// Word populates the entries when the field is updated.
+func (u *Updater) InsertTableOfFigures(opts CaptionListOptions) error {
+	return u.insertCaptionList(opts, CaptionFigure)
+}
+
+// InsertTableOfTables inserts a caption-based list field for Table captions.
+// Word populates the entries when the field is updated.
+func (u *Updater) InsertTableOfTables(opts CaptionListOptions) error {
+	return u.insertCaptionList(opts, CaptionTable)
+}
+
+func (u *Updater) insertCaptionList(opts CaptionListOptions, captionType CaptionType) error {
+	if u == nil {
+		return fmt.Errorf("updater is nil")
+	}
+
+	listXML := generateCaptionListXML(opts, captionType)
+
+	docPath := filepath.Join(u.tempDir, "word", "document.xml")
+	raw, err := os.ReadFile(docPath)
+	if err != nil {
+		return fmt.Errorf("read document.xml: %w", err)
+	}
+
+	updated, err := insertTOCAtPosition(raw, listXML, TOCOptions{
+		Position: opts.Position,
+		Anchor:   opts.Anchor,
+	})
+	if err != nil {
+		return fmt.Errorf("insert caption list: %w", err)
 	}
 
 	if err := os.WriteFile(docPath, updated, 0o644); err != nil {
@@ -112,6 +180,44 @@ func generateTOCXML(opts TOCOptions) []byte {
 	buf.WriteString(`<w:fldChar w:fldCharType="end"/>`)
 	buf.WriteString("</w:r>")
 
+	buf.WriteString("</w:p>")
+
+	return buf.Bytes()
+}
+
+// generateCaptionListXML creates the XML for a caption-based list field such as
+// a Table of Figures or Table of Tables.
+func generateCaptionListXML(opts CaptionListOptions, captionType CaptionType) []byte {
+	var buf bytes.Buffer
+
+	if opts.Title != "" {
+		buf.Write(generateTOCTitleXML(opts.Title))
+	}
+
+	listName := "Table of Figures"
+	if captionType == CaptionTable {
+		listName = "Table of Tables"
+	}
+	fieldInstr := fmt.Sprintf(` TOC \h \z \c "%s" `, captionType)
+
+	buf.WriteString("<w:p>")
+	buf.WriteString("<w:pPr/>")
+	buf.WriteString("<w:r>")
+	buf.WriteString(`<w:fldChar w:fldCharType="begin"/>`)
+	buf.WriteString("</w:r>")
+	buf.WriteString("<w:r>")
+	buf.WriteString(fmt.Sprintf(`<w:instrText xml:space="preserve">%s</w:instrText>`, xmlEscape(fieldInstr)))
+	buf.WriteString("</w:r>")
+	buf.WriteString("<w:r>")
+	buf.WriteString(`<w:fldChar w:fldCharType="separate"/>`)
+	buf.WriteString("</w:r>")
+	buf.WriteString("<w:r>")
+	buf.WriteString("<w:rPr><w:i/></w:rPr>")
+	buf.WriteString(fmt.Sprintf(`<w:t>Update this field to show %s</w:t>`, xmlEscape(listName)))
+	buf.WriteString("</w:r>")
+	buf.WriteString("<w:r>")
+	buf.WriteString(`<w:fldChar w:fldCharType="end"/>`)
+	buf.WriteString("</w:r>")
 	buf.WriteString("</w:p>")
 
 	return buf.Bytes()

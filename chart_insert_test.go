@@ -382,6 +382,131 @@ func TestInsertChartAtBeginning(t *testing.T) {
 	}
 }
 
+func TestInsertLineChartMarkerOrderForOOXMLValidation(t *testing.T) {
+	tempDir := t.TempDir()
+	inputPath := filepath.Join(tempDir, "input.docx")
+	outputPath := filepath.Join(tempDir, "output.docx")
+
+	if err := os.WriteFile(inputPath, buildFixtureDocx(t), 0o644); err != nil {
+		t.Fatalf("write input fixture: %v", err)
+	}
+
+	u, err := godocx.New(inputPath)
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+	defer u.Cleanup()
+
+	err = u.InsertChart(godocx.ChartOptions{
+		Position:   godocx.PositionEnd,
+		Title:      "Line Chart Validation",
+		ChartKind:  godocx.ChartKindLine,
+		Categories: []string{"Jan", "Feb", "Mar"},
+		Series: []godocx.SeriesOptions{
+			{Name: "Series 1", Values: []float64{10, 20, 30}, ShowMarkers: true},
+		},
+		ShowLegend: true,
+	})
+	if err != nil {
+		t.Fatalf("InsertChart failed: %v", err)
+	}
+
+	if err := u.Save(outputPath); err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+
+	chartXML, _ := findChartXMLContaining(t, outputPath, "Line Chart Validation")
+
+	serStart := strings.Index(chartXML, "<c:ser>")
+	if serStart == -1 {
+		t.Fatal("series element not found")
+	}
+	serEnd := strings.Index(chartXML[serStart:], "</c:ser>")
+	if serEnd == -1 {
+		t.Fatal("series closing tag not found")
+	}
+	serXML := chartXML[serStart : serStart+serEnd]
+
+	markerPos := strings.Index(serXML, "<c:marker>")
+	catPos := strings.Index(serXML, "<c:cat>")
+	valPos := strings.Index(serXML, "<c:val>")
+
+	if markerPos == -1 || catPos == -1 || valPos == -1 {
+		t.Fatalf("expected marker/cat/val in line series, got: %s", serXML)
+	}
+	if markerPos > catPos || markerPos > valPos {
+		t.Fatalf("invalid line series order: marker must appear before cat/val; series XML: %s", serXML)
+	}
+}
+
+func TestInsertChartWorkbookColumnsAlignWithSeriesFormulas(t *testing.T) {
+	tempDir := t.TempDir()
+	inputPath := filepath.Join(tempDir, "input.docx")
+	outputPath := filepath.Join(tempDir, "output.docx")
+
+	if err := os.WriteFile(inputPath, buildFixtureDocx(t), 0o644); err != nil {
+		t.Fatalf("write input fixture: %v", err)
+	}
+
+	u, err := godocx.New(inputPath)
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+	defer u.Cleanup()
+
+	err = u.InsertChart(godocx.ChartOptions{
+		Position:   godocx.PositionEnd,
+		Title:      "Workbook Alignment",
+		ChartKind:  godocx.ChartKindColumn,
+		Categories: []string{"Q1", "Q2"},
+		Series: []godocx.SeriesOptions{
+			{Name: "Revenue", Values: []float64{100, 200}},
+			{Name: "Cost", Values: []float64{80, 90}},
+		},
+		ShowLegend: true,
+	})
+	if err != nil {
+		t.Fatalf("InsertChart failed: %v", err)
+	}
+
+	if err := u.Save(outputPath); err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+
+	chartXML, _ := findChartXMLContaining(t, outputPath, "Workbook Alignment")
+	if !strings.Contains(chartXML, `Sheet1!$B$2:$B$3`) {
+		t.Fatalf("expected first series formula to point to column B, got chart: %s", chartXML)
+	}
+	if !strings.Contains(chartXML, `Sheet1!$C$2:$C$3`) {
+		t.Fatalf("expected second series formula to point to column C, got chart: %s", chartXML)
+	}
+
+	entries := listZipEntries(t, outputPath)
+	var matched bool
+	for _, entry := range entries {
+		if !strings.HasPrefix(entry, "word/embeddings/Microsoft_Excel_Worksheet") || !strings.HasSuffix(entry, ".xlsx") {
+			continue
+		}
+
+		xlsxRaw := readZipEntryBytes(t, outputPath, entry)
+		sheetXML := readWorkbookEntry(t, xlsxRaw, "xl/worksheets/sheet1.xml")
+		if strings.Contains(sheetXML, `>Revenue<`) && strings.Contains(sheetXML, `>Cost<`) {
+			matched = true
+			if !strings.Contains(sheetXML, `r="B1"`) {
+				t.Fatalf("expected Revenue workbook header in column B, got sheet: %s", sheetXML)
+			}
+			if !strings.Contains(sheetXML, `r="C1"`) {
+				t.Fatalf("expected Cost workbook header in column C, got sheet: %s", sheetXML)
+			}
+			break
+		}
+	}
+
+	if !matched {
+		t.Fatal("could not find inserted chart workbook containing Revenue/Cost series")
+	}
+}
+
 func findChartXMLContaining(t *testing.T, docxPath string, needle string) (string, string) {
 	t.Helper()
 

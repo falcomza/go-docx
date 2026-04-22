@@ -3,6 +3,7 @@ package godocx
 import (
 	"archive/zip"
 	"bytes"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -417,6 +418,137 @@ func TestGetTOCEntries_Integration(t *testing.T) {
 	}
 }
 
+func TestInsertTableOfFigures_Integration(t *testing.T) {
+	body := `<w:p><w:r><w:t>Introduction</w:t></w:r></w:p>` +
+		`<w:sectPr><w:pgSz w:w="12240" w:h="15840"/></w:sectPr>`
+
+	u := newUpdaterFromFixture(t, buildIntegrationFixture(t, body))
+
+	err := u.InsertTableOfFigures(DefaultTableOfFiguresOptions())
+	if err != nil {
+		t.Fatalf("InsertTableOfFigures: %v", err)
+	}
+
+	docXML := readDocXML(t, u)
+	if !strings.Contains(docXML, "Table of Figures") {
+		t.Error("table of figures title not found")
+	}
+	if !strings.Contains(docXML, `TOC \h \z \c &quot;Figure&quot;`) && !strings.Contains(docXML, `TOC \h \z \c "Figure"`) {
+		t.Error("figure caption list instruction not found")
+	}
+	if !strings.Contains(docXML, "fldCharType") {
+		t.Error("field code not found for table of figures")
+	}
+}
+
+func TestInsertTableOfTables_Integration(t *testing.T) {
+	body := `<w:p><w:r><w:t>Introduction</w:t></w:r></w:p>` +
+		`<w:sectPr><w:pgSz w:w="12240" w:h="15840"/></w:sectPr>`
+
+	u := newUpdaterFromFixture(t, buildIntegrationFixture(t, body))
+
+	err := u.InsertTableOfTables(DefaultTableOfTablesOptions())
+	if err != nil {
+		t.Fatalf("InsertTableOfTables: %v", err)
+	}
+
+	docXML := readDocXML(t, u)
+	if !strings.Contains(docXML, "Table of Tables") {
+		t.Error("table of tables title not found")
+	}
+	if !strings.Contains(docXML, `TOC \h \z \c &quot;Table&quot;`) && !strings.Contains(docXML, `TOC \h \z \c "Table"`) {
+		t.Error("table caption list instruction not found")
+	}
+	if !strings.Contains(docXML, "fldCharType") {
+		t.Error("field code not found for table of tables")
+	}
+}
+
+func TestGenerateDocxWithAllThreeTables(t *testing.T) {
+	body := `<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Chapter 1</w:t></w:r></w:p>` +
+		`<w:p><w:r><w:t>Body text</w:t></w:r></w:p>` +
+		`<w:sectPr><w:pgSz w:w="12240" w:h="15840"/></w:sectPr>`
+
+	u := newUpdaterFromFixture(t, buildIntegrationFixture(t, body))
+
+	if err := u.InsertTOC(TOCOptions{
+		Title:         "Table of Contents",
+		OutlineLevels: "1-3",
+		Position:      PositionBeginning,
+	}); err != nil {
+		t.Fatalf("InsertTOC: %v", err)
+	}
+
+	figOpts := DefaultTableOfFiguresOptions()
+	figOpts.Position = PositionEnd
+	if err := u.InsertTableOfFigures(figOpts); err != nil {
+		t.Fatalf("InsertTableOfFigures: %v", err)
+	}
+
+	tableOpts := DefaultTableOfTablesOptions()
+	tableOpts.Position = PositionEnd
+	if err := u.InsertTableOfTables(tableOpts); err != nil {
+		t.Fatalf("InsertTableOfTables: %v", err)
+	}
+
+	outputPath := filepath.Join(t.TempDir(), "all_three_tables.docx")
+	if err := u.Save(outputPath); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	zr, err := zip.OpenReader(outputPath)
+	if err != nil {
+		t.Fatalf("open saved docx: %v", err)
+	}
+	defer zr.Close()
+
+	var docXML string
+	for _, f := range zr.File {
+		if f.Name != "word/document.xml" {
+			continue
+		}
+		rc, err := f.Open()
+		if err != nil {
+			t.Fatalf("open document.xml in zip: %v", err)
+		}
+		raw, err := io.ReadAll(rc)
+		rc.Close()
+		if err != nil {
+			t.Fatalf("read document.xml from zip: %v", err)
+		}
+		docXML = string(raw)
+		break
+	}
+
+	if docXML == "" {
+		t.Fatal("document.xml not found in saved docx")
+	}
+
+	if !strings.Contains(docXML, "Table of Contents") {
+		t.Error("missing Table of Contents title")
+	}
+	if !strings.Contains(docXML, "Table of Figures") {
+		t.Error("missing Table of Figures title")
+	}
+	if !strings.Contains(docXML, "Table of Tables") {
+		t.Error("missing Table of Tables title")
+	}
+
+	if !strings.Contains(docXML, `TOC \o &quot;1-3&quot;`) && !strings.Contains(docXML, `TOC \o "1-3"`) {
+		t.Error("missing heading TOC field instruction")
+	}
+	if !strings.Contains(docXML, `TOC \h \z \c &quot;Figure&quot;`) && !strings.Contains(docXML, `TOC \h \z \c "Figure"`) {
+		t.Error("missing table of figures field instruction")
+	}
+	if !strings.Contains(docXML, `TOC \h \z \c &quot;Table&quot;`) && !strings.Contains(docXML, `TOC \h \z \c "Table"`) {
+		t.Error("missing table of tables field instruction")
+	}
+
+	if got := strings.Count(docXML, `w:fldCharType="begin"`); got < 3 {
+		t.Errorf("expected at least 3 field begin markers, got %d", got)
+	}
+}
+
 // --- Watermark integration tests ---
 
 func TestSetTextWatermark_Integration(t *testing.T) {
@@ -673,15 +805,15 @@ func TestAddStyle_Integration(t *testing.T) {
 	u := newUpdaterFromFixture(t, buildIntegrationFixture(t, body))
 
 	err := u.AddStyle(StyleDefinition{
-		ID:         "CustomHeading",
-		Name:       "Custom Heading",
-		Type:       StyleTypeParagraph,
-		BasedOn:    "Normal",
-		Bold:       true,
-		FontSize:   28,
-		Color:      "1F4E79",
-		Alignment:  ParagraphAlignCenter,
-		KeepNext:   true,
+		ID:        "CustomHeading",
+		Name:      "Custom Heading",
+		Type:      StyleTypeParagraph,
+		BasedOn:   "Normal",
+		Bold:      true,
+		FontSize:  28,
+		Color:     "1F4E79",
+		Alignment: ParagraphAlignCenter,
+		KeepNext:  true,
 	})
 	if err != nil {
 		t.Fatalf("AddStyle: %v", err)
