@@ -389,17 +389,19 @@ func generateTableXML(opts TableOptions) []byte {
 	} else {
 		buf.WriteString(fmt.Sprintf(`<w:tblW w:w="%d" w:type="%s"/>`, opts.TableWidth, opts.TableWidthType))
 	}
+
+	// Table alignment (w:jc must follow w:tblW and precede w:tblBorders per OOXML CT_TblPr sequence)
+	buf.WriteString(fmt.Sprintf(`<w:jc w:val="%s"/>`, opts.TableAlignment))
+
+	// Table borders
+	buf.WriteString(generateTableBorders(opts))
+
+	// Table layout (w:tblLayout must follow w:tblBorders per OOXML CT_TblPr sequence)
 	if opts.AutoFit {
 		buf.WriteString(`<w:tblLayout w:type="autofit"/>`)
 	} else {
 		buf.WriteString(`<w:tblLayout w:type="fixed"/>`)
 	}
-
-	// Table alignment
-	buf.WriteString(fmt.Sprintf(`<w:jc w:val="%s"/>`, opts.TableAlignment))
-
-	// Table borders
-	buf.WriteString(generateTableBorders(opts))
 
 	// Cell margins (padding)
 	buf.WriteString(fmt.Sprintf(`<w:tblCellMar>
@@ -714,13 +716,13 @@ func generateCell(content string, align CellAlignment, vAlign VerticalAlignment,
 	// Cell properties
 	buf.WriteString("<w:tcPr>")
 
-	// Vertical alignment
-	buf.WriteString(fmt.Sprintf(`<w:vAlign w:val="%s"/>`, vAlign))
-
-	// Background color
+	// Background color (w:shd must precede w:vAlign per OOXML CT_TcPr sequence)
 	if background != "" {
 		buf.WriteString(fmt.Sprintf(`<w:shd w:val="clear" w:color="auto" w:fill="%s"/>`, background))
 	}
+
+	// Vertical alignment
+	buf.WriteString(fmt.Sprintf(`<w:vAlign w:val="%s"/>`, vAlign))
 
 	buf.WriteString("</w:tcPr>")
 

@@ -196,8 +196,8 @@ func extractDocxUpdateNumberingIDs(content string) (int, int, bool) {
 // It returns the updated content and the two IDs that were allocated (abstractID, numID).
 func appendToNumberingXML(content string, generateFn func(abstractID, numID int) string) (string, int, int, error) {
 	closingTag := "</w:numbering>"
-	insertPos := strings.LastIndex(content, closingTag)
-	if insertPos == -1 {
+	closingPos := strings.LastIndex(content, closingTag)
+	if closingPos == -1 {
 		return "", 0, 0, fmt.Errorf("invalid numbering.xml: missing </w:numbering>")
 	}
 
@@ -205,7 +205,34 @@ func appendToNumberingXML(content string, generateFn func(abstractID, numID int)
 	numID := findMaxXMLAttributeInt(content, numIDPattern) + 1
 
 	definitions := generateFn(abstractID, numID)
-	updated := content[:insertPos] + definitions + "\n" + content[insertPos:]
+
+	// OOXML schema (CT_Numbering) requires all w:abstractNum elements to appear
+	// before any w:num elements. Split the generated definitions at the first
+	// w:num so that the abstractNum part is inserted before any existing w:num
+	// entries from the template, while the num part goes at the end.
+	firstNumInDefs := strings.Index(definitions, "<w:num ")
+	if firstNumInDefs == -1 {
+		// No w:num in generated content – safe to append everything at end.
+		updated := content[:closingPos] + definitions + "\n" + content[closingPos:]
+		return updated, abstractID, numID, nil
+	}
+
+	abstractPart := definitions[:firstNumInDefs]
+	numPart := definitions[firstNumInDefs:]
+
+	// Insert abstractNum part before the first existing w:num in the document,
+	// or before </w:numbering> if there are none.
+	firstExistingNum := strings.Index(content, "<w:num ")
+	if firstExistingNum == -1 || firstExistingNum >= closingPos {
+		// No existing num elements; append everything before closing tag.
+		updated := content[:closingPos] + definitions + "\n" + content[closingPos:]
+		return updated, abstractID, numID, nil
+	}
+
+	// Two-step insertion: abstractNum before first existing num, num part at end.
+	updated := content[:firstExistingNum] + abstractPart + content[firstExistingNum:]
+	newClosingPos := strings.LastIndex(updated, closingTag)
+	updated = updated[:newClosingPos] + numPart + "\n" + updated[newClosingPos:]
 	return updated, abstractID, numID, nil
 }
 
