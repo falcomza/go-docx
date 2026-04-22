@@ -307,6 +307,7 @@ func executableDir() string {
 	}
 	return filepath.Dir(exe)
 }
+
 // year, or year appended if none was present.
 // E.g. setTitleYear("OSS 2024", "2026") == "OSS 2026"
 //
