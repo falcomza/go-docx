@@ -196,3 +196,196 @@ func replaceCellText(tcContent, value string) (string, error) {
 	b.WriteString("</w:tc>")
 	return b.String(), nil
 }
+
+// AppendTableRow clones the last row of the Nth table (1-based) and replaces
+// each cell's text with the corresponding entry in cells. If cells has fewer
+// entries than the row has columns, the remaining cells are cleared. If it has
+// more entries, the extras are ignored.
+func (u *Updater) AppendTableRow(tableIndex int, cells []string) error {
+	if u == nil {
+		return fmt.Errorf("updater is nil")
+	}
+	if tableIndex < 1 {
+		return fmt.Errorf("tableIndex must be >= 1")
+	}
+
+	docPath := filepath.Join(u.tempDir, "word", "document.xml")
+	raw, err := os.ReadFile(docPath)
+	if err != nil {
+		return fmt.Errorf("read document.xml: %w", err)
+	}
+
+	updated, err := appendTableRowContent(raw, tableIndex, cells)
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(docPath, updated, 0o644)
+}
+
+// appendTableRowContent performs the XML surgery for AppendTableRow.
+func appendTableRowContent(raw []byte, tableIndex int, cells []string) ([]byte, error) {
+	content := string(raw)
+
+	// Locate Nth <w:tbl> block.
+	tblStart, tblEnd, err := findNthXMLBlock(content, "w:tbl", tableIndex)
+	if err != nil {
+		return nil, fmt.Errorf("table %d not found: %w", tableIndex, err)
+	}
+	tblContent := content[tblStart:tblEnd]
+
+	// Count rows and grab the last one to use as a template.
+	rowCount := 0
+	lastTRStart, lastTREnd := 0, 0
+	remaining := tblContent
+	offset := 0
+	for {
+		s, e, rerr := findNthXMLBlock(remaining, "w:tr", rowCount+1)
+		if rerr != nil {
+			break
+		}
+		rowCount++
+		lastTRStart = offset + s
+		lastTREnd = offset + e
+		advance := e
+		offset += advance
+		remaining = remaining[advance:]
+	}
+	if rowCount == 0 {
+		return nil, fmt.Errorf("table %d has no rows", tableIndex)
+	}
+
+	templateRow := tblContent[lastTRStart:lastTREnd]
+
+	// Count cells in the template row.
+	cellCount := 0
+	for {
+		_, _, cerr := findNthXMLBlock(templateRow, "w:tc", cellCount+1)
+		if cerr != nil {
+			break
+		}
+		cellCount++
+	}
+
+	// Build the new row by cloning the template and replacing each cell's text.
+	newRow := templateRow
+	for i := 0; i < cellCount; i++ {
+		var val string
+		if i < len(cells) {
+			val = cells[i]
+		}
+		tcS, tcE, cerr := findNthXMLBlock(newRow, "w:tc", i+1)
+		if cerr != nil {
+			break
+		}
+		updatedTC, rerr := replaceCellText(newRow[tcS:tcE], val)
+		if rerr != nil {
+			return nil, fmt.Errorf("replace cell %d text: %w", i+1, rerr)
+		}
+		newRow = newRow[:tcS] + updatedTC + newRow[tcE:]
+	}
+
+	// Insert the new row before </w:tbl>.
+	closeTbl := "</w:tbl>"
+	closePos := strings.LastIndex(tblContent, closeTbl)
+	if closePos < 0 {
+		return nil, fmt.Errorf("table %d: missing </w:tbl>", tableIndex)
+	}
+	newTbl := tblContent[:closePos] + newRow + tblContent[closePos:]
+	result := content[:tblStart] + newTbl + content[tblEnd:]
+	return []byte(result), nil
+}
+
+// InsertTableRowBefore inserts a new row immediately before the beforeRowIndex-th
+// row (1-based) of the tableIndex-th table (1-based). The row at
+// beforeRowIndex-1 (i.e. the row immediately before the gap) is used as a
+// formatting template. cells values replace each cell's text content. If cells
+// has fewer entries than the template row has columns, the remaining cells are
+// cleared; extra entries are ignored.
+func (u *Updater) InsertTableRowBefore(tableIndex, beforeRowIndex int, cells []string) error {
+	if u == nil {
+		return fmt.Errorf("updater is nil")
+	}
+	if tableIndex < 1 {
+		return fmt.Errorf("tableIndex must be >= 1")
+	}
+	if beforeRowIndex < 1 {
+		return fmt.Errorf("beforeRowIndex must be >= 1")
+	}
+
+	docPath := filepath.Join(u.tempDir, "word", "document.xml")
+	raw, err := os.ReadFile(docPath)
+	if err != nil {
+		return fmt.Errorf("read document.xml: %w", err)
+	}
+
+	updated, err := insertTableRowBeforeContent(raw, tableIndex, beforeRowIndex, cells)
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(docPath, updated, 0o644)
+}
+
+// insertTableRowBeforeContent performs the XML surgery for InsertTableRowBefore.
+func insertTableRowBeforeContent(raw []byte, tableIndex, beforeRowIndex int, cells []string) ([]byte, error) {
+	content := string(raw)
+
+	// Locate Nth <w:tbl> block.
+	tblStart, tblEnd, err := findNthXMLBlock(content, "w:tbl", tableIndex)
+	if err != nil {
+		return nil, fmt.Errorf("table %d not found: %w", tableIndex, err)
+	}
+	tblContent := content[tblStart:tblEnd]
+
+	// Locate the row we will insert before — record its start offset in tblContent.
+	insertTrStart, _, err := findNthXMLBlock(tblContent, "w:tr", beforeRowIndex)
+	if err != nil {
+		return nil, fmt.Errorf("table %d row %d not found: %w", tableIndex, beforeRowIndex, err)
+	}
+
+	// Use the row just before the insertion point as the formatting template.
+	// If inserting before row 1, use row 1 itself as the template.
+	templateIdx := beforeRowIndex - 1
+	if templateIdx < 1 {
+		templateIdx = 1
+	}
+	trS, trE, terr := findNthXMLBlock(tblContent, "w:tr", templateIdx)
+	if terr != nil {
+		return nil, fmt.Errorf("table %d template row %d not found: %w", tableIndex, templateIdx, terr)
+	}
+	templateRow := tblContent[trS:trE]
+
+	// Count cells in the template row.
+	cellCount := 0
+	for {
+		_, _, cerr := findNthXMLBlock(templateRow, "w:tc", cellCount+1)
+		if cerr != nil {
+			break
+		}
+		cellCount++
+	}
+
+	// Build the new row by cloning the template and replacing each cell's text.
+	newRow := templateRow
+	for i := 0; i < cellCount; i++ {
+		var val string
+		if i < len(cells) {
+			val = cells[i]
+		}
+		tcS, tcE, cerr := findNthXMLBlock(newRow, "w:tc", i+1)
+		if cerr != nil {
+			break
+		}
+		updatedTC, rerr := replaceCellText(newRow[tcS:tcE], val)
+		if rerr != nil {
+			return nil, fmt.Errorf("replace cell %d text: %w", i+1, rerr)
+		}
+		newRow = newRow[:tcS] + updatedTC + newRow[tcE:]
+	}
+
+	// Insert the new row before insertTrStart in tblContent.
+	newTbl := tblContent[:insertTrStart] + newRow + tblContent[insertTrStart:]
+	result := content[:tblStart] + newTbl + content[tblEnd:]
+	return []byte(result), nil
+}

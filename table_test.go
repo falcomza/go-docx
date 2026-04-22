@@ -1173,3 +1173,61 @@ func TestUpdateTableCellValidation(t *testing.T) {
 		}
 	}
 }
+
+func TestAppendTableRow(t *testing.T) {
+	u := buildFixtureDocxForTableUpdate(t)
+	defer u.Cleanup()
+
+	// Table has header + 2 data rows = 3 rows before append.
+	if err := u.AppendTableRow(1, []string{"Gamma", "300"}); err != nil {
+		t.Fatalf("AppendTableRow: %v", err)
+	}
+
+	tables, err := u.GetTableText()
+	if err != nil {
+		t.Fatalf("GetTableText: %v", err)
+	}
+	tbl := tables[0]
+	if len(tbl) != 4 {
+		t.Fatalf("expected 4 rows after append, got %d", len(tbl))
+	}
+	last := tbl[len(tbl)-1]
+	if last[0] != "Gamma" || last[1] != "300" {
+		t.Errorf("last row = %v, want [Gamma 300]", last)
+	}
+}
+
+func TestAppendTableRowFewerCells(t *testing.T) {
+	u := buildFixtureDocxForTableUpdate(t)
+	defer u.Cleanup()
+
+	// Provide only one cell value for a 2-column table.
+	if err := u.AppendTableRow(1, []string{"Delta"}); err != nil {
+		t.Fatalf("AppendTableRow: %v", err)
+	}
+
+	tables, err := u.GetTableText()
+	if err != nil {
+		t.Fatalf("GetTableText: %v", err)
+	}
+	tbl := tables[0]
+	last := tbl[len(tbl)-1]
+	if last[0] != "Delta" {
+		t.Errorf("cell[0] = %q, want Delta", last[0])
+	}
+	if last[1] != "" {
+		t.Errorf("cell[1] = %q, want empty", last[1])
+	}
+}
+
+func TestAppendTableRowValidation(t *testing.T) {
+	u := buildFixtureDocxForTableUpdate(t)
+	defer u.Cleanup()
+
+	if err := u.AppendTableRow(0, []string{"x"}); err == nil {
+		t.Error("expected error for tableIndex=0")
+	}
+	if err := u.AppendTableRow(99, []string{"x"}); err == nil {
+		t.Error("expected error for non-existent table")
+	}
+}
