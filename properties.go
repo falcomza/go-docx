@@ -414,7 +414,7 @@ func (u *Updater) extractCoreProperty(content, property string) string {
 	pattern := fmt.Sprintf(`<%s[^>]*>(.*?)</%s>`, regexp.QuoteMeta(property), regexp.QuoteMeta(property))
 	re := regexp.MustCompile(pattern)
 	if match := re.FindStringSubmatch(content); len(match) > 1 {
-		return match[1]
+		return xmlUnescape(match[1])
 	}
 	return ""
 }
@@ -636,7 +636,7 @@ func (u *Updater) extractAppProperty(content, property string) string {
 	pattern := fmt.Sprintf(`<%s(?:\s[^>]*)?>([^<]*)</%s>`, regexp.QuoteMeta(property), regexp.QuoteMeta(property))
 	re := regexp.MustCompile(pattern)
 	if match := re.FindStringSubmatch(content); len(match) > 1 {
-		return match[1]
+		return xmlUnescape(match[1])
 	}
 	return ""
 }
